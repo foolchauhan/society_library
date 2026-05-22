@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="referrer" content="strict-origin-when-cross-origin">
+  
+  <!-- Trusted Types Policy for browser extension compatibility -->
+  <script>
+    if (window.trustedTypes && window.trustedTypes.createPolicy) {
+      if (!window.trustedTypes.defaultPolicy) {
+        window.trustedTypes.createPolicy('default', {
+          createHTML: (string) => string,
+          createScript: (string) => string,
+          createScriptURL: (string) => string
+        });
+      }
+    }
+  </script>
+
+  <!-- SEO Meta Tags -->
+  <title>Society Library | Lend & Borrow Books with Neighbors</title>
+  <meta name="description" content="A private, Google Sheets-backed library management system for society residents. Request, lend, and track books in your local community.">
+  
+  <!-- CSS Stylesheet -->
+  <link rel="stylesheet" href="src/css/styles.css?v=1.0.18">
+  
+  <!-- Google Identity Services (Sign-In) SDK -->
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+</head>
+<body>
+
+  <!-- App Initialization Progress Bar -->
+  <div id="init-progress" class="init-progress-bar-container" style="display: block;">
+    <div class="init-progress-bar"></div>
+  </div>
+
+  <div id="app">
+    
+    <!-- Top Header -->
+    <header>
+      <div class="container">
+        <!-- Logo -->
+        <a href="#" class="logo" id="logo-home">
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1-2.5-2.5Z"/>
+            <path d="M6 6h10"/><path d="M6 10h10"/><path d="M6 14h10"/>
+          </svg>
+          Society<span>Library</span>
+        </a>
+
+        <!-- Navigation Tabs -->
+        <nav>
+          <ul class="nav-links" id="nav-links">
+            <!-- Rendered Dynamically in ui.js based on role -->
+          </ul>
+        </nav>
+
+        <!-- Header Actions (Theme toggle + User profile menu) -->
+        <div class="header-actions" style="display: flex; align-items: center; gap: 1rem;">
+          <!-- Theme Toggle Button -->
+          <button id="theme-toggle-btn" class="btn btn-secondary" style="padding: 0.5rem; border-radius: 50%; width: 2.25rem; height: 2.25rem; display: flex; align-items: center; justify-content: center;" title="Toggle Light/Dark Theme">
+            <!-- Icon injected by JS -->
+          </button>
+
+          <!-- User Menu / Loading Spinner / Sign-In Info -->
+          <div class="user-menu" id="user-menu">
+            <!-- Sign In / Profile details dynamically injected -->
+          </div>
+        </div>
+
+        <!-- Global Activity Loader Spinner -->
+        <div id="loader" style="display: none; position: absolute; top: 1rem; right: 50%; transform: translateX(50%); z-index: 100;" title="Loading...">
+          <div class="spinner"></div>
+        </div>
+      </div>
+    </header>
+
+    <!-- Main Content Container -->
+    <main class="container" style="flex-grow: 1; padding-top: 2rem; padding-bottom: 3rem;">
+      
+      <!-- Stats summary section (shows general counts above content) -->
+      <section id="stats-summary">
+        <!-- Rendered Dynamically in ui.js -->
+      </section>
+
+      <!-- Main Dynamic Content Area -->
+      <div id="main-content">
+        <!-- Renders Welcome Screen, registration screen, or profile reviews dynamically -->
+      </div>
+
+      <!-- Tab View Containers (Show/Hide toggled by app router) -->
+      <section class="tab-content" id="catalog-view">
+        <!-- Renders book grids, search, and ISBN addition forms -->
+      </section>
+
+      <section class="tab-content" id="borrower-view">
+        <!-- Renders borrower requests, active loan progress, history -->
+      </section>
+
+      <section class="tab-content" id="lender-view">
+        <!-- Renders lender dashboard, approve actions, handover buttons -->
+      </section>
+
+      <section class="tab-content" id="admin-view">
+        <!-- Renders users table, status modifications -->
+      </section>
+
+    </main>
+
+    <!-- Footer -->
+    <footer>
+      <div class="container">
+        <p>&copy; 2026 Society Library Management System. Managed locally. Powered by Google Sheets.</p>
+        <p style="font-size: 0.7rem; margin-top: 0.25rem; opacity: 0.6;">A frontend-only, open-source project.</p>
+      </div>
+    </footer>
+
+  </div>
+
+  <!-- Main JavaScript App Entry -->
+  <script type="module" src="src/js/app.js?v=1.0.18"></script>
+</body>
+</html>
