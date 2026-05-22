@@ -3,8 +3,8 @@
  * Manages routing, auth state, and coordinates API and UI updates.
  */
 
-import { LibraryAPI } from './api.js?v=1.0.19';
-import { LibraryUI } from './ui.js?v=1.0.19';
+import { LibraryAPI } from './api.js?v=1.0.20';
+import { LibraryUI } from './ui.js?v=1.0.20';
 
 // ==========================================
 // CONFIGURATION
@@ -361,6 +361,7 @@ async function handleViewChange(view) {
 
   showLoader();
   STATE.activeView = view;
+  LibraryUI.switchActiveTab(view);
 
   // Clear main-content welcome/onboarding screen if we are viewing a dashboard tab
   const mainContent = document.getElementById('main-content');

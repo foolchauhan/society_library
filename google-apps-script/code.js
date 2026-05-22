@@ -64,10 +64,10 @@ function setupDatabase() {
   if (ownerEmail) {
     usersSheet.appendRow([
       ownerEmail,
-      "System Admin",
-      "Admin Office",
-      "0000000000",
-      "Both",
+      "Chetan Chauhan",
+      "A2:820",
+      "8334053394",
+      "Owner",
       "Approved",
       new Date().toISOString()
     ]);

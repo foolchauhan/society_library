@@ -76,6 +76,300 @@ class UiService {
     }
   }
 
+  async fetchRichBookMetadata(query, title = '', author = '', isbn = '', workKey = '') {
+    const results = {
+      title: title || '',
+      author: author || '',
+      isbn: isbn || '',
+      genre: '',
+      pages: '',
+      language: 'English',
+      publisher: '',
+      publishYear: '',
+      coverUrls: []
+    };
+
+    const cleanIsbn = (query && /^[0-9xX\-\s]+$/.test(query) ? query : (isbn || '')).replace(/[-\s]/g, '');
+
+    const fetchGoogleBooks = async () => {
+      let gUrl = '';
+      if (cleanIsbn) {
+        gUrl = `https://www.googleapis.com/books/v1/volumes?q=isbn:${cleanIsbn}`;
+      } else if (title) {
+        gUrl = `https://www.googleapis.com/books/v1/volumes?q=intitle:${encodeURIComponent(title)}${author ? `+inauthor:${encodeURIComponent(author)}` : ''}`;
+      } else if (query) {
+        gUrl = `https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(query)}`;
+      }
+
+      if (!gUrl) return null;
+
+      try {
+        const res = await fetch(gUrl);
+        if (res.ok) {
+          const data = await res.json();
+          if (data && data.items && data.items.length > 0) {
+            return data.items[0].volumeInfo;
+          }
+        }
+      } catch (e) {
+        console.warn("Google Books fetch failed:", e);
+      }
+      return null;
+    };
+
+    const fetchOpenLibraryWork = async () => {
+      if (!workKey) return null;
+      try {
+        const res = await fetch(`https://openlibrary.org${workKey}.json`);
+        if (res.ok) {
+          return await res.json();
+        }
+      } catch (e) {
+        console.warn("Open Library Work fetch failed:", e);
+      }
+      return null;
+    };
+
+    const fetchOpenLibrarySearch = async () => {
+      let olSearchUrl = '';
+      if (cleanIsbn) {
+        olSearchUrl = `https://openlibrary.org/search.json?isbn=${encodeURIComponent(cleanIsbn)}&limit=1`;
+      } else if (title) {
+        olSearchUrl = `https://openlibrary.org/search.json?title=${encodeURIComponent(title)}&author=${encodeURIComponent(author)}&limit=1`;
+      }
+      if (!olSearchUrl) return null;
+      try {
+        const res = await fetch(olSearchUrl);
+        if (res.ok) {
+          const data = await res.json();
+          if (data && data.docs && data.docs.length > 0) {
+            return data.docs[0];
+          }
+        }
+      } catch (e) {
+        console.warn("Open Library Search fetch failed:", e);
+      }
+      return null;
+    };
+
+    // Trigger in parallel
+    const [gInfo, olWork, olSearch] = await Promise.all([
+      fetchGoogleBooks(),
+      fetchOpenLibraryWork(),
+      (cleanIsbn || title) ? fetchOpenLibrarySearch() : Promise.resolve(null)
+    ]);
+
+    // 1. Google Books population
+    if (gInfo) {
+      if (gInfo.title && !results.title) results.title = gInfo.title;
+      if (gInfo.authors && !results.author) results.author = gInfo.authors.join(', ');
+      if (gInfo.pageCount) results.pages = gInfo.pageCount.toString();
+      if (gInfo.publisher) results.publisher = gInfo.publisher;
+      if (gInfo.publishedDate) {
+        const match = gInfo.publishedDate.match(/\d{4}/);
+        if (match) results.publishYear = match[0];
+      }
+      if (gInfo.language) {
+        const langMap = { en: 'English', fr: 'French', de: 'German', es: 'Spanish', hi: 'Hindi', mr: 'Marathi', ja: 'Japanese' };
+        results.language = langMap[gInfo.language] || gInfo.language;
+      }
+      if (gInfo.categories && gInfo.categories.length > 0) {
+        results.genre = gInfo.categories.join(', ');
+      }
+      if (gInfo.imageLinks) {
+        const imgs = gInfo.imageLinks;
+        const addCover = (url) => {
+          if (url && !results.coverUrls.includes(url)) {
+            const secureUrl = url.replace('http://', 'https://');
+            results.coverUrls.push(secureUrl);
+          }
+        };
+        addCover(imgs.thumbnail);
+        addCover(imgs.smallThumbnail);
+        addCover(imgs.medium);
+        addCover(imgs.large);
+      }
+      if (gInfo.industryIdentifiers) {
+        const isbn13 = gInfo.industryIdentifiers.find(id => id.type === 'ISBN_13');
+        const isbn10 = gInfo.industryIdentifiers.find(id => id.type === 'ISBN_10');
+        if (isbn13) results.isbn = isbn13.identifier;
+        else if (isbn10) results.isbn = isbn10.identifier;
+      }
+    }
+
+    // 2. Open Library Work / Search fallback/enrichment
+    const olDoc = olWork || olSearch;
+    if (olDoc) {
+      if (olDoc.title && !results.title) results.title = olDoc.title;
+      if (olDoc.authors && !results.author) {
+        if (Array.isArray(olDoc.authors)) {
+          if (olDoc.authors[0] && olDoc.authors[0].name) {
+            results.author = olDoc.authors.map(a => a.name).join(', ');
+          } else if (olSearch && olSearch.author_name) {
+            results.author = olSearch.author_name.join(', ');
+          }
+        }
+      }
+      if (olDoc.subjects && Array.isArray(olDoc.subjects)) {
+        const cleanSubjects = olDoc.subjects.slice(0, 5).join(', ');
+        if (results.genre) {
+          const existing = results.genre.toLowerCase();
+          const unique = olDoc.subjects.slice(0, 5).filter(s => !existing.includes(s.toLowerCase()));
+          if (unique.length > 0) results.genre += ', ' + unique.join(', ');
+        } else {
+          results.genre = cleanSubjects;
+        }
+      } else if (olSearch && olSearch.subject && !results.genre) {
+        results.genre = olSearch.subject.slice(0, 3).join(', ');
+      }
+
+      if (olSearch) {
+        if (olSearch.number_of_pages_median && !results.pages) {
+          results.pages = olSearch.number_of_pages_median.toString();
+        }
+        if (olSearch.publisher && olSearch.publisher.length > 0 && !results.publisher) {
+          results.publisher = olSearch.publisher[0];
+        }
+        if (olSearch.first_publish_year && !results.publishYear) {
+          results.publishYear = olSearch.first_publish_year.toString();
+        }
+        if (olSearch.isbn && !results.isbn) {
+          results.isbn = olSearch.isbn[0];
+        }
+      }
+
+      const addOlCover = (id, type = 'id') => {
+        if (!id) return;
+        const large = `https://covers.openlibrary.org/b/${type}/${id}-L.jpg`;
+        if (!results.coverUrls.some(url => url === large)) {
+          results.coverUrls.push(large);
+        }
+      };
+
+      if (olDoc.covers && Array.isArray(olDoc.covers)) {
+        olDoc.covers.forEach(coverId => {
+          if (coverId && coverId > 0) addOlCover(coverId, 'id');
+        });
+      }
+      if (olSearch) {
+        if (olSearch.cover_i) addOlCover(olSearch.cover_i, 'id');
+        if (olSearch.cover_edition_key) addOlCover(olSearch.cover_edition_key, 'olid');
+        if (olSearch.edition_key && Array.isArray(olSearch.edition_key)) {
+          olSearch.edition_key.slice(0, 3).forEach(ek => addOlCover(ek, 'olid'));
+        }
+        if (olSearch.isbn && Array.isArray(olSearch.isbn)) {
+          olSearch.isbn.slice(0, 2).forEach(isbnNum => addOlCover(isbnNum, 'isbn'));
+        }
+      }
+    }
+
+    return results;
+  }
+
+  renderCoverCarousel(coverUrls, thumbnailsList, coverInput, customCoverMode = false) {
+    thumbnailsList.innerHTML = '';
+    
+    const candidates = [];
+    coverUrls.forEach(url => {
+      if (!url) return;
+      let thumb = url;
+      if (url.includes('openlibrary.org')) {
+        thumb = url.replace('-L.jpg', '-M.jpg').replace('-S.jpg', '-M.jpg');
+      }
+      if (!candidates.some(c => c.large === url)) {
+        candidates.push({ thumb, large: url });
+      }
+    });
+
+    if (candidates.length === 0) {
+      thumbnailsList.innerHTML = `
+        <div class="cover-thumbnail-placeholder">
+          No Covers Found. Click 'Use Custom URL' to add one.
+        </div>
+      `;
+      if (!customCoverMode) {
+        coverInput.value = '';
+      }
+      return;
+    }
+
+    let displayedCount = 0;
+
+    const renderNextBatch = (batchSize) => {
+      const existingMoreBtn = thumbnailsList.querySelector('.cover-thumbnail-more');
+      if (existingMoreBtn) {
+        existingMoreBtn.remove();
+      }
+
+      const batch = candidates.slice(displayedCount, displayedCount + batchSize);
+      batch.forEach((cover) => {
+        const item = document.createElement('div');
+        item.className = 'cover-thumbnail-item';
+        item.setAttribute('data-large-url', cover.large);
+
+        const img = document.createElement('img');
+        img.src = cover.thumb;
+        img.alt = 'Cover option';
+
+        img.onerror = () => {
+          item.style.display = 'none';
+          if (item.classList.contains('selected')) {
+            const visibleItems = Array.from(thumbnailsList.querySelectorAll('.cover-thumbnail-item'))
+              .filter(el => el.style.display !== 'none' && el !== item);
+            if (visibleItems.length > 0) {
+              visibleItems[0].click();
+            } else {
+              coverInput.value = '';
+            }
+          }
+        };
+
+        item.appendChild(img);
+
+        item.addEventListener('click', () => {
+          thumbnailsList.querySelectorAll('.cover-thumbnail-item').forEach(el => el.classList.remove('selected'));
+          item.classList.add('selected');
+          if (!customCoverMode) {
+            coverInput.value = cover.large;
+            const editCoverImg = document.getElementById('book-edit-cover-img');
+            const editCoverPreview = document.getElementById('book-edit-cover-preview');
+            if (editCoverImg) {
+              editCoverImg.src = cover.large;
+            } else if (editCoverPreview) {
+              editCoverPreview.innerHTML = `<img src="${cover.large}" style="width:100%;height:100%;object-fit:cover;" id="book-edit-cover-img">`;
+            }
+          }
+        });
+
+        thumbnailsList.appendChild(item);
+      });
+
+      displayedCount += batch.length;
+
+      const selectedItem = thumbnailsList.querySelector('.cover-thumbnail-item.selected');
+      if (!selectedItem) {
+        const firstVisible = Array.from(thumbnailsList.querySelectorAll('.cover-thumbnail-item'))
+          .find(el => el.style.display !== 'none');
+        if (firstVisible) {
+          firstVisible.click();
+        }
+      }
+
+      if (displayedCount < candidates.length) {
+        const moreBtn = document.createElement('div');
+        moreBtn.className = 'cover-thumbnail-more';
+        moreBtn.innerHTML = `<span>+ More</span>`;
+        moreBtn.addEventListener('click', () => {
+          renderNextBatch(5);
+        });
+        thumbnailsList.appendChild(moreBtn);
+      }
+    };
+
+    renderNextBatch(3);
+  }
+
+
   setupModalDom() {
     this.modalOverlay = document.getElementById('modal-overlay');
     if (!this.modalOverlay) {
@@ -142,7 +436,13 @@ class UiService {
   renderNavbar(user) {
     const navLinks = document.getElementById('nav-links');
     const userMenu = document.getElementById('user-menu');
+    const bottomNav = document.getElementById('bottom-nav');
     
+    if (bottomNav) {
+      bottomNav.style.display = 'none';
+      bottomNav.innerHTML = '';
+    }
+
     if (!user) {
       navLinks.innerHTML = `
         <li class="nav-link active" data-view="catalog">${ICONS.book} Explore</li>
@@ -210,7 +510,7 @@ class UiService {
       </button>
     `;
 
-    // Add Tab Navigation click handlers
+    // Add Tab Navigation click handlers for top header
     document.querySelectorAll('.nav-link').forEach(link => {
       link.addEventListener('click', (e) => {
         const targetView = link.getAttribute('data-view');
@@ -228,11 +528,74 @@ class UiService {
     document.getElementById('edit-profile-btn').addEventListener('click', () => {
       if (this.onActionCallback) this.onActionCallback('open_edit_profile', user);
     });
+
+    // Populate and render mobile bottom navbar
+    if (bottomNav && isApproved) {
+      bottomNav.style.display = 'flex';
+      let bottomLinksHtml = '';
+      
+      bottomLinksHtml += `
+        <button class="bottom-nav-link active" data-view="catalog">
+          ${ICONS.book}
+          <span>Explore</span>
+        </button>
+      `;
+      
+      if (role === 'Borrower' || role === 'Both' || role === 'Admin' || role === 'Owner') {
+        bottomLinksHtml += `
+          <button class="bottom-nav-link" data-view="borrower">
+            ${ICONS.history}
+            <span>Borrows</span>
+          </button>
+        `;
+      }
+      
+      if (role === 'Lender' || role === 'Both' || role === 'Admin' || role === 'Owner') {
+        bottomLinksHtml += `
+          <button class="bottom-nav-link" data-view="lender">
+            ${ICONS.lending}
+            <span>Lending</span>
+          </button>
+        `;
+      }
+      
+      if (role === 'Admin' || role === 'Owner') {
+        bottomLinksHtml += `
+          <button class="bottom-nav-link" data-view="admin">
+            ${ICONS.settings}
+            <span>${role === 'Owner' ? 'Owner' : 'Admin'}</span>
+          </button>
+        `;
+      }
+      
+      bottomNav.innerHTML = bottomLinksHtml;
+      
+      // Bind click handlers for bottom nav
+      bottomNav.querySelectorAll('.bottom-nav-link').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const targetView = btn.getAttribute('data-view');
+          this.switchActiveTab(targetView);
+          if (this.onViewChangeCallback) {
+            this.onViewChangeCallback(targetView);
+          }
+        });
+      });
+    }
   }
 
-  switchActiveTab(activeLinkElement) {
-    document.querySelectorAll('.nav-link').forEach(l => l.classList.remove('active'));
-    activeLinkElement.classList.add('active');
+  switchActiveTab(targetViewOrElement) {
+    let view = targetViewOrElement;
+    if (targetViewOrElement instanceof HTMLElement) {
+      view = targetViewOrElement.getAttribute('data-view');
+    }
+    
+    // De-activate all top links and bottom buttons
+    document.querySelectorAll('.nav-link, .bottom-nav-link').forEach(l => l.classList.remove('active'));
+    
+    // Activate all elements matching view
+    if (view) {
+      document.querySelectorAll(`[data-view="${view}"]`).forEach(l => l.classList.add('active'));
+    }
   }
 
   renderStatsSkeleton() {
@@ -299,6 +662,18 @@ class UiService {
     const viewContainer = document.getElementById('catalog-view');
     let viewMode = localStorage.getItem('lib_catalog_view') || 'grid';
     
+    // Extract unique genres for dynamic checkbox dropdown
+    const genresSet = new Set();
+    books.forEach(book => {
+      if (book.genre) {
+        book.genre.split(/[,;]+/).forEach(g => {
+          const trimmed = g.trim();
+          if (trimmed) genresSet.add(trimmed);
+        });
+      }
+    });
+    const uniqueGenres = Array.from(genresSet).sort();
+    
     viewContainer.innerHTML = `
       <div class="dashboard-section">
         <div class="section-header">
@@ -314,8 +689,8 @@ class UiService {
             <input type="text" class="form-control search-input" id="catalog-search" placeholder="Search by title, author, genre, or ISBN...">
           </div>
           <select class="form-control" id="catalog-filter-availability" style="max-width: 180px;">
-            <option value="all">All Copies</option>
-            <option value="available" selected>Only Available</option>
+            <option value="all" selected>All Copies</option>
+            <option value="available">Only Available</option>
             <option value="borrowed">Checked Out</option>
           </select>
           ${currentUser ? `
@@ -335,6 +710,22 @@ class UiService {
             })()}
           </select>
           ` : ''}
+          <div class="genre-dropdown-container" id="genre-dropdown-container">
+            <button type="button" class="form-control genre-dropdown-btn" id="genre-dropdown-btn">
+              <span>All Genres</span>
+              <span class="genre-dropdown-arrow">▼</span>
+            </button>
+            <div class="genre-dropdown-menu" id="genre-dropdown-menu">
+              ${uniqueGenres.length === 0 ? `
+                <div style="padding:0.5rem;font-size:0.8rem;color:var(--text-muted);text-align:center;">No genres found</div>
+              ` : uniqueGenres.map(genre => `
+                <label class="genre-checkbox-label">
+                  <input type="checkbox" value="${genre}" class="genre-checkbox-input">
+                  <span>${genre}</span>
+                </label>
+              `).join('')}
+            </div>
+          </div>
         </div>
 
         <div class="catalog-toolbar">
@@ -359,11 +750,34 @@ class UiService {
     const listBtn = document.getElementById('view-btn-list');
     const countLabel = document.getElementById('catalog-count');
 
+    const genreDropdownBtn = document.getElementById('genre-dropdown-btn');
+    const genreDropdownMenu = document.getElementById('genre-dropdown-menu');
+    const genreDropdownContainer = document.getElementById('genre-dropdown-container');
+
     const filterAndRender = () => {
       const query = searchInput.value;
       const normQuery = normalizeString(query);
       const availability = filterSelect.value;
       const ownership = ownershipSelect ? ownershipSelect.value : 'all';
+      
+      // Get selected genres from checkboxes
+      const checkedBoxes = document.querySelectorAll('.genre-checkbox-input:checked');
+      const selectedGenres = Array.from(checkedBoxes).map(cb => cb.value);
+
+      // Update dropdown button text
+      if (genreDropdownBtn) {
+        const btnSpan = genreDropdownBtn.querySelector('span');
+        if (selectedGenres.length === 0) {
+          btnSpan.textContent = 'All Genres';
+          btnSpan.style.color = 'var(--text-secondary)';
+        } else if (selectedGenres.length === 1) {
+          btnSpan.textContent = selectedGenres[0];
+          btnSpan.style.color = 'var(--text-primary)';
+        } else {
+          btnSpan.textContent = `Genres (${selectedGenres.length})`;
+          btnSpan.style.color = 'var(--text-primary)';
+        }
+      }
       
       const filtered = books.filter(book => {
         const textMatch = 
@@ -389,7 +803,17 @@ class UiService {
           ownershipMatch = book.book_id === targetBookId;
         }
 
-        return textMatch && statusMatch && ownershipMatch;
+        let genreMatch = true;
+        if (selectedGenres.length > 0) {
+          if (book.genre) {
+            const bookGenres = book.genre.split(/[,;]+/).map(g => g.trim().toLowerCase());
+            genreMatch = selectedGenres.some(sg => bookGenres.includes(sg.toLowerCase()));
+          } else {
+            genreMatch = false;
+          }
+        }
+
+        return textMatch && statusMatch && ownershipMatch && genreMatch;
       });
 
       if (countLabel) countLabel.textContent = `${filtered.length} book${filtered.length !== 1 ? 's' : ''}`;
@@ -399,6 +823,28 @@ class UiService {
     searchInput.addEventListener('input', filterAndRender);
     filterSelect.addEventListener('change', filterAndRender);
     if (ownershipSelect) ownershipSelect.addEventListener('change', filterAndRender);
+
+    // Bind checkbox change listeners
+    document.querySelectorAll('.genre-checkbox-input').forEach(cb => {
+      cb.addEventListener('change', filterAndRender);
+    });
+
+    // Dropdown toggle listeners
+    if (genreDropdownBtn && genreDropdownMenu) {
+      genreDropdownBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const isOpen = genreDropdownMenu.style.display === 'block';
+        genreDropdownMenu.style.display = isOpen ? 'none' : 'block';
+        genreDropdownContainer.classList.toggle('open', !isOpen);
+      });
+
+      document.addEventListener('click', (e) => {
+        if (genreDropdownContainer && !genreDropdownContainer.contains(e.target)) {
+          genreDropdownMenu.style.display = 'none';
+          genreDropdownContainer.classList.remove('open');
+        }
+      });
+    }
 
     // View toggle
     gridBtn.addEventListener('click', () => {
@@ -420,6 +866,20 @@ class UiService {
 
     const addBtn = document.getElementById('btn-add-book');
     if (addBtn) addBtn.addEventListener('click', () => this.showAddBookForm());
+
+    // Render FAB for mobile if authorized
+    if (currentUser && currentUser.status === 'Approved' && (currentUser.role === 'Lender' || currentUser.role === 'Both' || currentUser.role === 'Admin' || currentUser.role === 'Owner')) {
+      const existingFab = document.getElementById('fab-add-book');
+      if (existingFab) existingFab.remove();
+      
+      const fab = document.createElement('button');
+      fab.id = 'fab-add-book';
+      fab.className = 'fab-add-book';
+      fab.innerHTML = ICONS.plus;
+      fab.title = 'Lend a Book';
+      fab.addEventListener('click', () => this.showAddBookForm());
+      viewContainer.appendChild(fab);
+    }
   }
 
   renderBookGrid(books, currentUser, viewMode = 'grid') {
@@ -2078,50 +2538,97 @@ class UiService {
             `;
 
             item.addEventListener('click', async () => {
-              document.getElementById('book-title').value = doc.title || '';
-              document.getElementById('book-author').value = doc.author_name ? doc.author_name.join(', ') : 'Unknown';
-              document.getElementById('book-isbn').value = doc.isbn ? doc.isbn[0] : '';
-
-              // Auto-populate extra details from Open Library data
-              const extraSection = document.getElementById('extra-details-section');
-              const extraArrow = document.getElementById('extra-details-arrow');
-              if (doc.first_publish_year) {
-                document.getElementById('book-publish-year').value = doc.first_publish_year;
-              }
-              if (doc.number_of_pages_median) {
-                document.getElementById('book-pages').value = doc.number_of_pages_median;
-              }
-              if (doc.publisher && doc.publisher.length > 0) {
-                document.getElementById('book-publisher').value = doc.publisher[0];
-              }
-              if (doc.language && doc.language.length > 0) {
-                // Convert language codes like 'eng' to 'English' where possible
-                const langMap = { eng: 'English', fre: 'French', ger: 'German', spa: 'Spanish', hin: 'Hindi', mar: 'Marathi' };
-                document.getElementById('book-language').value = langMap[doc.language[0]] || doc.language[0];
-              }
-              if (doc.subject && doc.subject.length > 0) {
-                // Take first 3 subjects as genre tags
-                document.getElementById('book-genre').value = doc.subject.slice(0, 3).join(', ');
-              }
-              // Auto-open extra details if any were populated
-              if (doc.first_publish_year || doc.number_of_pages_median || doc.publisher || doc.subject) {
-                if (extraSection && !extraSection.classList.contains('open')) {
-                  extraSection.classList.add('open');
-                  if (extraArrow) extraArrow.textContent = '▲';
-                }
-              }
-
               resultsPicker.style.display = 'none';
               resultsPicker.innerHTML = '';
 
-              lookupAlert.style.background = 'rgba(16, 185, 129, 0.08)';
-              lookupAlert.style.border = '1px solid rgba(16, 185, 129, 0.15)';
-              alertTitle.innerText = "Details Autofilled!";
-              alertTitle.style.color = 'var(--accent-emerald)';
-              alertDesc.innerText = `Selected "${doc.title}"`;
-              this.showToast("Book details retrieved successfully!");
+              lookupAlert.style.display = 'flex';
+              lookupAlert.style.background = 'var(--bg-surface)';
+              lookupAlert.style.border = '1px solid var(--border-color)';
+              alertTitle.style.color = 'var(--text-secondary)';
+              alertTitle.innerText = "Querying additional metadata...";
+              alertDesc.innerText = "Fetching rich details and cover versions in parallel...";
+              spinner.style.display = 'block';
 
-              await renderCoverCarousel(doc);
+              try {
+                const titleVal = doc.title || '';
+                const authorVal = doc.author_name ? doc.author_name.join(', ') : '';
+                const isbnVal = doc.isbn ? doc.isbn[0] : '';
+                const meta = await this.fetchRichBookMetadata(null, titleVal, authorVal, isbnVal, doc.key);
+
+                if (meta) {
+                  document.getElementById('book-title').value = meta.title || titleVal || '';
+                  document.getElementById('book-author').value = meta.author || authorVal || 'Unknown';
+                  document.getElementById('book-isbn').value = meta.isbn || isbnVal || '';
+                  document.getElementById('book-genre').value = meta.genre || '';
+                  document.getElementById('book-pages').value = meta.pages || '';
+                  document.getElementById('book-language').value = meta.language || 'English';
+                  document.getElementById('book-publish-year').value = meta.publishYear || '';
+                  document.getElementById('book-publisher').value = meta.publisher || '';
+
+                  // Show cover carousel using Unified Carousel
+                  this.renderCoverCarousel(meta.coverUrls, thumbnailsList, bookCoverInput, customCoverMode);
+                  
+                  // Auto-select first cover & sync to input value
+                  const selected = thumbnailsList.querySelector('.cover-thumbnail-item.selected');
+                  if (selected) {
+                    bookCoverInput.value = selected.getAttribute('data-large-url') || '';
+                  }
+
+                  // Open additional details section since we enriched
+                  const extraSection = document.getElementById('extra-details-section');
+                  const extraArrow = document.getElementById('extra-details-arrow');
+                  if (extraSection && !extraSection.classList.contains('open')) {
+                    extraSection.classList.add('open');
+                    if (extraArrow) extraArrow.textContent = '▲';
+                  }
+
+                  lookupAlert.style.background = 'rgba(16, 185, 129, 0.08)';
+                  lookupAlert.style.border = '1px solid rgba(16, 185, 129, 0.15)';
+                  alertTitle.innerText = "Details Autofilled!";
+                  alertTitle.style.color = 'var(--accent-emerald)';
+                  alertDesc.innerText = `Selected & Enriched "${doc.title}"`;
+                  this.showToast("Book details retrieved successfully!");
+                }
+              } catch (err) {
+                console.error("Enrichment fetch failed", err);
+                this.showToast("Fetched basic search details, but web enrichment failed.", "info");
+                
+                // Fallback to basic open library data
+                document.getElementById('book-title').value = doc.title || '';
+                document.getElementById('book-author').value = doc.author_name ? doc.author_name.join(', ') : 'Unknown';
+                document.getElementById('book-isbn').value = doc.isbn ? doc.isbn[0] : '';
+                if (doc.first_publish_year) {
+                  document.getElementById('book-publish-year').value = doc.first_publish_year;
+                }
+                if (doc.number_of_pages_median) {
+                  document.getElementById('book-pages').value = doc.number_of_pages_median;
+                }
+                if (doc.publisher && doc.publisher.length > 0) {
+                  document.getElementById('book-publisher').value = doc.publisher[0];
+                }
+                if (doc.language && doc.language.length > 0) {
+                  const langMap = { eng: 'English', fre: 'French', ger: 'German', spa: 'Spanish', hin: 'Hindi', mar: 'Marathi' };
+                  document.getElementById('book-language').value = langMap[doc.language[0]] || doc.language[0];
+                }
+                if (doc.subject && doc.subject.length > 0) {
+                  document.getElementById('book-genre').value = doc.subject.slice(0, 3).join(', ');
+                }
+                
+                // Auto-open extra details if any were populated
+                const extraSection = document.getElementById('extra-details-section');
+                const extraArrow = document.getElementById('extra-details-arrow');
+                if (doc.first_publish_year || doc.number_of_pages_median || doc.publisher || doc.subject) {
+                  if (extraSection && !extraSection.classList.contains('open')) {
+                    extraSection.classList.add('open');
+                    if (extraArrow) extraArrow.textContent = '▲';
+                  }
+                }
+                
+                // Fallback rendering
+                await renderCoverCarousel(doc);
+              } finally {
+                spinner.style.display = 'none';
+              }
             });
 
             resultsPicker.appendChild(item);
@@ -2178,18 +2685,36 @@ class UiService {
     document.getElementById('add-book-form').addEventListener('submit', (e) => {
       e.preventDefault();
 
+      // Ensure all fields are properly extracted with defaults
+      const titleEl = document.getElementById('book-title');
+      const authorEl = document.getElementById('book-author');
+      const isbnEl = document.getElementById('book-isbn');
+      const coverEl = document.getElementById('book-cover');
+      const copiesEl = document.getElementById('book-copies');
+      const genreEl = document.getElementById('book-genre');
+      const pagesEl = document.getElementById('book-pages');
+      const languageEl = document.getElementById('book-language');
+      const publisherEl = document.getElementById('book-publisher');
+      const publishYearEl = document.getElementById('book-publish-year');
+
       const payload = {
-        title: document.getElementById('book-title').value,
-        author: document.getElementById('book-author').value,
-        isbn: document.getElementById('book-isbn').value,
-        coverUrl: document.getElementById('book-cover').value,
-        copies: document.getElementById('book-copies').value,
-        genre: document.getElementById('book-genre').value,
-        pages: document.getElementById('book-pages').value,
-        language: document.getElementById('book-language').value,
-        publisher: document.getElementById('book-publisher').value,
-        publishYear: document.getElementById('book-publish-year').value
+        title: titleEl ? titleEl.value.trim() : '',
+        author: authorEl ? authorEl.value.trim() : '',
+        isbn: isbnEl ? isbnEl.value.trim() : '',
+        coverUrl: coverEl ? coverEl.value.trim() : '',
+        copies: copiesEl ? copiesEl.value.trim() : '1',
+        genre: genreEl ? genreEl.value.trim() : '',
+        pages: pagesEl ? pagesEl.value.trim() : '',
+        language: languageEl ? languageEl.value.trim() : 'English',
+        publisher: publisherEl ? publisherEl.value.trim() : '',
+        publishYear: publishYearEl ? publishYearEl.value.trim() : ''
       };
+
+      // Validate required fields
+      if (!payload.title || !payload.author) {
+        alert('Please fill in Title and Author fields.');
+        return;
+      }
 
       if (this.onActionCallback) {
         this.onActionCallback('add_book', payload);
@@ -2242,7 +2767,10 @@ class UiService {
 
         <div class="form-group">
           <label class="form-label" for="book-edit-isbn">ISBN</label>
-          <input type="text" class="form-control" id="book-edit-isbn" value="${book.isbn || ''}" placeholder="e.g. 9780261102217" autocomplete="off">
+          <div style="display:flex; gap:0.5rem;">
+            <input type="text" class="form-control" id="book-edit-isbn" value="${book.isbn || ''}" placeholder="e.g. 9780261102217" autocomplete="off" style="flex:1;">
+            <button type="button" class="btn btn-secondary" id="book-edit-fetch-details" style="white-space:nowrap; padding: 0 0.75rem;">Fetch Details</button>
+          </div>
         </div>
 
         <button type="button" class="details-toggle-btn" id="btn-edit-toggle-extra">
@@ -2334,6 +2862,74 @@ class UiService {
 
     let customMode = false;
 
+    // Fetch Web Details wire up
+    const fetchDetailsBtn = document.getElementById('book-edit-fetch-details');
+    if (fetchDetailsBtn) {
+      fetchDetailsBtn.addEventListener('click', async () => {
+        const isbnVal = document.getElementById('book-edit-isbn').value.trim();
+        const authorVal = document.getElementById('book-edit-author').value.trim();
+        
+        fetchDetailsBtn.disabled = true;
+        const originalText = fetchDetailsBtn.innerHTML;
+        fetchDetailsBtn.innerHTML = `<div class="spinner" style="width:1rem;height:1rem;border-width:1.5px;"></div>`;
+        
+        try {
+          const meta = await this.fetchRichBookMetadata(isbnVal || book.title, book.title, authorVal, isbnVal);
+          if (meta) {
+            if (meta.author && !authorVal) {
+              document.getElementById('book-edit-author').value = meta.author;
+            }
+            if (meta.isbn && !isbnVal) {
+              document.getElementById('book-edit-isbn').value = meta.isbn;
+            }
+            document.getElementById('book-edit-genre').value = meta.genre || '';
+            document.getElementById('book-edit-pages').value = meta.pages || '';
+            document.getElementById('book-edit-language').value = meta.language || 'English';
+            document.getElementById('book-edit-publish-year').value = meta.publishYear || '';
+            document.getElementById('book-edit-publisher').value = meta.publisher || '';
+            
+            // Render cover carousel with meta.coverUrls
+            if (meta.coverUrls && meta.coverUrls.length > 0) {
+              this.renderCoverCarousel(meta.coverUrls, thumbnailsList, coverValueInput, customMode);
+              
+              // update preview image if carousel has a selected image
+              const selected = thumbnailsList.querySelector('.cover-thumbnail-item.selected');
+              if (selected) {
+                const largeUrl = selected.getAttribute('data-large-url');
+                coverValueInput.value = largeUrl;
+                if (coverImg) {
+                  coverImg.src = largeUrl;
+                } else {
+                  const previewContainer = document.getElementById('book-edit-cover-preview');
+                  if (previewContainer) {
+                    previewContainer.innerHTML = `<img src="${largeUrl}" style="width:100%;height:100%;object-fit:cover;" id="book-edit-cover-img">`;
+                  }
+                }
+              }
+            }
+            
+            // Open additional details if we populated them
+            const extraSection = document.getElementById('edit-extra-details-section');
+            const arrow = document.getElementById('edit-extra-arrow');
+            if (extraSection && !extraSection.classList.contains('open')) {
+              extraSection.classList.add('open');
+              if (arrow) arrow.textContent = '▲';
+            }
+            
+            this.showToast('Successfully fetched details from the web!', 'success');
+          } else {
+            this.showToast('No metadata found for this book.', 'info');
+          }
+        } catch (err) {
+          console.error(err);
+          this.showToast('Failed to fetch web details.', 'error');
+        } finally {
+          fetchDetailsBtn.disabled = false;
+          fetchDetailsBtn.innerHTML = originalText;
+        }
+      });
+    }
+
     // Toggle Custom URL vs Carousel
     toggleBtn.addEventListener('click', () => {
       customMode = !customMode;
@@ -2362,7 +2958,15 @@ class UiService {
     const selectThumb = (item) => {
       thumbnailsList.querySelectorAll('.cover-thumbnail-item').forEach(el => el.classList.remove('selected'));
       item.classList.add('selected');
-      coverValueInput.value = item.getAttribute('data-large-url') || '';
+      const largeUrl = item.getAttribute('data-large-url') || '';
+      coverValueInput.value = largeUrl;
+      const editCoverImg = document.getElementById('book-edit-cover-img');
+      const editCoverPreview = document.getElementById('book-edit-cover-preview');
+      if (editCoverImg) {
+        editCoverImg.src = largeUrl;
+      } else if (editCoverPreview && largeUrl) {
+        editCoverPreview.innerHTML = `<img src="${largeUrl}" style="width:100%;height:100%;object-fit:cover;" id="book-edit-cover-img">`;
+      }
     };
 
     // Bind existing thumbnail if present

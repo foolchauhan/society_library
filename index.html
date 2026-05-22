@@ -23,7 +23,7 @@
   <meta name="description" content="A private, Google Sheets-backed library management system for society residents. Request, lend, and track books in your local community.">
   
   <!-- CSS Stylesheet -->
-  <link rel="stylesheet" href="src/css/styles.css?v=1.0.19">
+  <link rel="stylesheet" href="src/css/styles.css?v=1.0.20">
   
   <!-- Google Identity Services (Sign-In) SDK -->
   <script src="https://accounts.google.com/gsi/client" async defer></script>
@@ -116,9 +116,14 @@
       </div>
     </footer>
 
+    <!-- Bottom Navigation (Mobile viewports only) -->
+    <nav class="bottom-nav" id="bottom-nav" style="display: none;">
+      <!-- Populated dynamically in ui.js -->
+    </nav>
+
   </div>
 
   <!-- Main JavaScript App Entry -->
-  <script type="module" src="src/js/app.js?v=1.0.19"></script>
+  <script type="module" src="src/js/app.js?v=1.0.20"></script>
 </body>
 </html>
