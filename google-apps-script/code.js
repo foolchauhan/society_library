@@ -227,6 +227,21 @@ function registerUser(payload, user) {
   ];
   sheet.appendRow(userData);
 
+  if (status === 'Pending') {
+    const adminList = getAdminsAndOwnerEmails();
+    if (adminList) {
+      const subject = "Society Library: New Resident Registration Pending Approval";
+      const body = `Hello Administrator,\n\nA new resident has registered for the Society Library and is pending approval:\n\n` +
+                   `Name: ${payload.name || user.name}\n` +
+                   `Email: ${user.email}\n` +
+                   `Flat Number: ${payload.flatNumber || 'N/A'}\n` +
+                   `Role: ${role}\n\n` +
+                   `Please log in to the Society Library and visit the Admin Panel to approve or deny this request.\n\n` +
+                   `Best regards,\nSociety Library System`;
+      sendEmailNotification(adminList, subject, body);
+    }
+  }
+
   return respond({
     status: 'success',
     data: {
@@ -451,6 +466,19 @@ function requestBook(payload, user) {
   // Update book status to Requested
   updateCell(booksSheet, bookIndex, 'status', 'Requested');
 
+  const borrowerName = userProfile ? userProfile.name : user.name;
+  const borrowerFlat = userProfile ? userProfile.flat_number : 'N/A';
+  
+  const subject = `Society Library: Borrow request for "${bookRow.title}"`;
+  const body = `Hello Lender,\n\nA resident has requested to borrow one of your books:\n\n` +
+               `Book: "${bookRow.title}" (by ${bookRow.author || 'Unknown'})\n` +
+               `Requested By: ${borrowerName} (Flat ${borrowerFlat})\n` +
+               `Duration: ${durationDays} days\n` +
+               `Borrower Notes: ${notes || 'None'}\n\n` +
+               `Please log in to the Society Library and visit your Lending Desk to approve or reject this request.\n\n` +
+               `Best regards,\nSociety Library System`;
+  sendEmailNotification(bookRow.owner_email, subject, body);
+
   return respond({ status: 'success', loanId: loanId });
 }
 
@@ -475,6 +503,20 @@ function approveLoan(payload, user) {
   const now = new Date().toISOString();
   updateCell(loansSheet, loanIndex, 'status', 'Approved');
   updateCell(loansSheet, loanIndex, 'approval_date', now);
+
+  const booksSheet = SPREADSHEET.getSheetByName(TABS.BOOKS);
+  const bookIndex = findRowIndexByKey(booksSheet, 'book_id', loan.book_id);
+  const book = bookIndex !== -1 ? getRowAsObject(booksSheet, bookIndex) : null;
+  const bookTitle = book ? book.title : 'the requested book';
+
+  const subject = `Society Library: Borrow request APPROVED for "${bookTitle}"`;
+  const body = `Hello Borrower,\n\n` +
+               `Your request to borrow "${bookTitle}" has been APPROVED by the lender (${loan.lender_email}).\n\n` +
+               `Please contact the lender to coordinate the physical handover of the book.\n\n` +
+               `Lender Email: ${loan.lender_email}\n` +
+               `Approved Duration: ${loan.duration_days} days\n\n` +
+               `Best regards,\nSociety Library System`;
+  sendEmailNotification(loan.borrower_email, subject, body);
 
   return respond({ status: 'success' });
 }
@@ -505,6 +547,16 @@ function rejectLoan(payload, user) {
   if (bookIndex !== -1) {
     updateCell(booksSheet, bookIndex, 'status', 'Available');
   }
+
+  const book = bookIndex !== -1 ? getRowAsObject(booksSheet, bookIndex) : null;
+  const bookTitle = book ? book.title : 'the requested book';
+
+  const subject = `Society Library: Borrow request declined for "${bookTitle}"`;
+  const body = `Hello Borrower,\n\n` +
+               `Unfortunately, your request to borrow "${bookTitle}" could not be approved by the lender at this time.\n\n` +
+               `The book has been returned to the catalog. You can request another copy or check in with the lender.\n\n` +
+               `Best regards,\nSociety Library System`;
+  sendEmailNotification(loan.borrower_email, subject, body);
 
   return respond({ status: 'success' });
 }
@@ -627,6 +679,16 @@ function adminUpdateUserStatus(payload, user) {
 
   if (payload.role) {
     updateCell(usersSheet, userIndex, 'role', payload.role);
+  }
+
+  if (newStatus === 'Approved' && targetUser.status !== 'Approved') {
+    const subject = "Society Library: Your Account has been Approved! 🎉";
+    const body = `Hello ${targetUser.name || 'Resident'},\n\n` +
+                 `We are pleased to inform you that your Society Library account has been approved by the administrators.\n\n` +
+                 `You can now log in to search the catalog, borrow books from neighbors, and lend your own books.\n\n` +
+                 `Link: https://foolchauhan.github.io/society_library\n\n` +
+                 `Happy Reading!\nSociety Library System`;
+    sendEmailNotification(targetUser.email, subject, body);
   }
 
   return respond({ status: 'success' });
@@ -763,6 +825,16 @@ function adminEditUser(payload, user) {
   if (payload.role) updateCell(usersSheet, rowIndex, 'role', payload.role);
   if (payload.status) updateCell(usersSheet, rowIndex, 'status', payload.status);
 
+  if (payload.status === 'Approved' && targetUser.status !== 'Approved') {
+    const subject = "Society Library: Your Account has been Approved! 🎉";
+    const body = `Hello ${targetUser.name || 'Resident'},\n\n` +
+                 `We are pleased to inform you that your Society Library account has been approved by the administrators.\n\n` +
+                 `You can now log in to search the catalog, borrow books from neighbors, and lend your own books.\n\n` +
+                 `Link: https://foolchauhan.github.io/society_library\n\n` +
+                 `Happy Reading!\nSociety Library System`;
+    sendEmailNotification(targetUser.email, subject, body);
+  }
+
   const updatedTarget = getRowAsObject(usersSheet, rowIndex);
   return respond({ status: 'success', data: updatedTarget });
 }
@@ -865,4 +937,34 @@ function respond(data) {
 
 function respondError(message, code) {
   return respond({ status: 'error', message: message, code: code || 400 });
+}
+
+// Helper to send email notifications safely
+function sendEmailNotification(to, subject, body) {
+  try {
+    if (!to) return;
+    MailApp.sendEmail({
+      to: to,
+      subject: subject,
+      body: body
+    });
+    Logger.log("Email sent successfully to: " + to);
+  } catch (err) {
+    Logger.log("Error sending email: " + err.toString());
+  }
+}
+
+// Fetch all active Admins/Owners to notify them
+function getAdminsAndOwnerEmails() {
+  try {
+    const usersSheet = SPREADSHEET.getSheetByName(TABS.USERS);
+    const users = getSheetDataAsObjects(usersSheet);
+    const adminEmails = users
+      .filter(u => (u.role === 'Admin' || u.role === 'Owner') && u.status === 'Approved')
+      .map(u => u.email);
+    return adminEmails.join(',');
+  } catch (err) {
+    Logger.log("Error getting admin emails: " + err.toString());
+    return '';
+  }
 }
