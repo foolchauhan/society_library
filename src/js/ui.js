@@ -25,7 +25,10 @@ const ICONS = {
   edit: '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>',
   lock: '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>',
   unlock: '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/></svg>',
-  userEdit: '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>'
+  userEdit: '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>',
+  grid: '<svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>',
+  list: '<svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>',
+  pages: '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>'
 };
 
 const normalizeString = (str) => {
@@ -294,8 +297,8 @@ class UiService {
    */
   renderCatalogView(books, currentUser) {
     const viewContainer = document.getElementById('catalog-view');
+    let viewMode = localStorage.getItem('lib_catalog_view') || 'grid';
     
-    // Clear and build DOM skeleton first time or reuse
     viewContainer.innerHTML = `
       <div class="dashboard-section">
         <div class="section-header">
@@ -308,7 +311,7 @@ class UiService {
         <div class="search-container">
           <div class="search-wrapper">
             <span class="search-icon">${ICONS.search}</span>
-            <input type="text" class="form-control search-input" id="catalog-search" placeholder="Search by title, author, owner flat, or ISBN...">
+            <input type="text" class="form-control search-input" id="catalog-search" placeholder="Search by title, author, genre, or ISBN...">
           </div>
           <select class="form-control" id="catalog-filter-availability" style="max-width: 180px;">
             <option value="all">All Copies</option>
@@ -334,7 +337,15 @@ class UiService {
           ` : ''}
         </div>
 
-        <div class="book-grid" id="catalog-grid">
+        <div class="catalog-toolbar">
+          <span style="font-size:0.8rem; color:var(--text-muted);" id="catalog-count"></span>
+          <div class="view-toggle-group">
+            <button class="view-toggle-btn ${viewMode === 'grid' ? 'active' : ''}" id="view-btn-grid" title="Grid View">${ICONS.grid} Grid</button>
+            <button class="view-toggle-btn ${viewMode === 'list' ? 'active' : ''}" id="view-btn-list" title="List View">${ICONS.list} List</button>
+          </div>
+        </div>
+
+        <div id="catalog-grid">
           <!-- Book cards will render here -->
         </div>
       </div>
@@ -344,7 +355,10 @@ class UiService {
     const searchInput = document.getElementById('catalog-search');
     const filterSelect = document.getElementById('catalog-filter-availability');
     const ownershipSelect = document.getElementById('catalog-filter-ownership');
-    
+    const gridBtn = document.getElementById('view-btn-grid');
+    const listBtn = document.getElementById('view-btn-list');
+    const countLabel = document.getElementById('catalog-count');
+
     const filterAndRender = () => {
       const query = searchInput.value;
       const normQuery = normalizeString(query);
@@ -352,15 +366,14 @@ class UiService {
       const ownership = ownershipSelect ? ownershipSelect.value : 'all';
       
       const filtered = books.filter(book => {
-        // Text Match
         const textMatch = 
           normalizeString(book.title).includes(normQuery) ||
           normalizeString(book.author).includes(normQuery) ||
           (book.owner_name && normalizeString(book.owner_name).includes(normQuery)) ||
           (book.owner_flat && normalizeString(book.owner_flat).includes(normQuery)) ||
-          (book.isbn && normalizeString(book.isbn).includes(normQuery));
+          (book.isbn && normalizeString(book.isbn).includes(normQuery)) ||
+          (book.genre && normalizeString(book.genre).includes(normQuery));
         
-        // Status Match
         let statusMatch = true;
         if (availability === 'available') {
           statusMatch = book.status === 'Available';
@@ -368,7 +381,6 @@ class UiService {
           statusMatch = book.status === 'Borrowed' || book.status === 'Requested';
         }
 
-        // Ownership Match
         let ownershipMatch = true;
         if (ownership === 'mine') {
           ownershipMatch = currentUser && book.owner_email === currentUser.email;
@@ -380,30 +392,42 @@ class UiService {
         return textMatch && statusMatch && ownershipMatch;
       });
 
-      this.renderBookGrid(filtered, currentUser);
+      if (countLabel) countLabel.textContent = `${filtered.length} book${filtered.length !== 1 ? 's' : ''}`;
+      this.renderBookGrid(filtered, currentUser, viewMode);
     };
 
     searchInput.addEventListener('input', filterAndRender);
     filterSelect.addEventListener('change', filterAndRender);
-    if (ownershipSelect) {
-      ownershipSelect.addEventListener('change', filterAndRender);
-    }
+    if (ownershipSelect) ownershipSelect.addEventListener('change', filterAndRender);
 
-    // Initial render of book grid
+    // View toggle
+    gridBtn.addEventListener('click', () => {
+      viewMode = 'grid';
+      localStorage.setItem('lib_catalog_view', 'grid');
+      gridBtn.classList.add('active');
+      listBtn.classList.remove('active');
+      filterAndRender();
+    });
+    listBtn.addEventListener('click', () => {
+      viewMode = 'list';
+      localStorage.setItem('lib_catalog_view', 'list');
+      listBtn.classList.add('active');
+      gridBtn.classList.remove('active');
+      filterAndRender();
+    });
+
     filterAndRender();
 
-    // Bind lend a book button
     const addBtn = document.getElementById('btn-add-book');
-    if (addBtn) {
-      addBtn.addEventListener('click', () => this.showAddBookForm());
-    }
+    if (addBtn) addBtn.addEventListener('click', () => this.showAddBookForm());
   }
 
-  renderBookGrid(books, currentUser) {
+  renderBookGrid(books, currentUser, viewMode = 'grid') {
     const grid = document.getElementById('catalog-grid');
     if (books.length === 0) {
+      grid.className = '';
       grid.innerHTML = `
-        <div style="grid-column: 1 / -1; text-align: center; padding: 3rem; color: var(--text-muted);">
+        <div style="text-align: center; padding: 3rem; color: var(--text-muted);">
           ${ICONS.book}
           <p style="margin-top: 1rem; font-size: 1rem;">No books match your filters.</p>
         </div>
@@ -411,6 +435,84 @@ class UiService {
       return;
     }
 
+    if (viewMode === 'list') {
+      grid.className = 'book-list';
+      grid.innerHTML = books.map(book => {
+        const isOwner = currentUser && book.owner_email === currentUser.email;
+        const isSystemOwner = currentUser && currentUser.role === 'Owner';
+        const isAvailable = book.status === 'Available';
+        let badgeClass = 'badge-available';
+        if (book.status === 'Requested') badgeClass = 'badge-requested';
+        if (book.status === 'Borrowed') badgeClass = 'badge-borrowed';
+        if (book.status === 'Unavailable' || book.status === 'Lost') badgeClass = 'badge-lost';
+
+        const genres = book.genre ? book.genre.split(',').map(g => g.trim()).filter(Boolean) : [];
+        const genreHtml = genres.slice(0, 2).map(g => `<span class="genre-chip">${g}</span>`).join('');
+        const pagesHtml = book.pages ? `<span class="book-meta-pill">${ICONS.pages} ${book.pages}p</span>` : '';
+        const yearHtml = book.publish_year ? `<span class="book-meta-pill">${book.publish_year}</span>` : '';
+
+        let actionHtml = '';
+        if (isOwner) {
+          actionHtml = `
+            <span class="book-badge ${badgeClass}" style="position:static; display:inline-block; margin-bottom:0.35rem;">${book.status}</span>
+            <div style="display:flex; gap:0.3rem;">
+              <button class="btn btn-secondary btn-sm btn-owner-edit" data-id="${book.book_id}" title="Edit">${ICONS.edit}</button>
+              <button class="btn btn-secondary btn-sm btn-owner-toggle" data-id="${book.book_id}" title="Toggle">${book.status === 'Unavailable' ? ICONS.unlock : ICONS.lock}</button>
+              <button class="btn btn-sm btn-owner-delete" data-id="${book.book_id}" title="Remove" style="background:rgba(244,63,94,0.1); border:1px solid rgba(244,63,94,0.25); color:var(--accent-rose);">${ICONS.x}</button>
+            </div>`;
+        } else if (isSystemOwner) {
+          actionHtml = `
+            <span class="book-badge ${badgeClass}" style="position:static; display:inline-block; margin-bottom:0.35rem;">${book.status}</span>
+            <div style="display:flex; gap:0.3rem;">
+              <button class="btn btn-secondary btn-sm btn-sysowner-edit" data-id="${book.book_id}" data-owner="${book.owner_name || 'the owner'}" title="Edit">${ICONS.edit}</button>
+              <button class="btn btn-sm btn-sysowner-delete" data-id="${book.book_id}" data-owner="${book.owner_name || 'the owner'}" title="Remove" style="background:rgba(244,63,94,0.1); border:1px solid rgba(244,63,94,0.25); color:var(--accent-rose);">${ICONS.x}</button>
+            </div>`;
+        } else if (isAvailable && currentUser && currentUser.status === 'Approved') {
+          actionHtml = `
+            <span class="book-badge ${badgeClass}" style="position:static; display:inline-block; margin-bottom:0.35rem;">${book.status}</span>
+            <button class="btn btn-primary btn-sm btn-request-borrow" data-id="${book.book_id}">Request</button>`;
+        } else if (isAvailable && !currentUser) {
+          actionHtml = `
+            <span class="book-badge ${badgeClass}" style="position:static; display:inline-block; margin-bottom:0.35rem;">${book.status}</span>
+            <button class="btn btn-primary btn-sm btn-signin-redirect">Sign in</button>`;
+        } else {
+          actionHtml = `<span class="book-badge ${badgeClass}" style="position:static; display:inline-block;">${book.status}</span>`;
+        }
+
+        return `
+          <div class="book-list-row" data-book-id="${book.book_id}">
+            <div class="book-list-cover">
+              ${book.cover_url
+                ? `<img src="${book.cover_url}" alt="${book.title}" class="book-list-cover-img">`
+                : `<div class="book-list-no-cover">${ICONS.book}</div>`}
+            </div>
+            <div class="book-list-meta">
+              <div class="book-list-title" title="${book.title}">${book.title}</div>
+              <div class="book-list-author">by ${book.author}${book.publish_year ? ` &middot; ${book.publish_year}` : ''}</div>
+              <div class="book-list-details">
+                ${genreHtml}
+                ${pagesHtml}
+                ${yearHtml && !book.publish_year ? yearHtml : ''}
+                <span class="book-meta-pill">${ICONS.user} Flat ${book.owner_flat || 'N/A'}</span>
+              </div>
+            </div>
+            <div class="book-list-actions">${actionHtml}</div>
+          </div>
+        `;
+      }).join('');
+
+      // Bind all list-view button events (reusing same selectors as grid)
+      this._bindBookGridEvents(books, currentUser, grid);
+      // Bind cover image errors
+      grid.querySelectorAll('.book-list-cover-img').forEach(img => {
+        img.addEventListener('error', () => {
+          img.parentElement.innerHTML = `<div class="book-list-no-cover">${ICONS.book}</div>`;
+        });
+      });
+      return;
+    }
+
+    grid.className = 'book-grid';
     grid.innerHTML = books.map(book => {
       const isOwner = currentUser && book.owner_email === currentUser.email;
       const isSystemOwner = currentUser && currentUser.role === 'Owner';
@@ -421,6 +523,13 @@ class UiService {
       if (book.status === 'Borrowed') badgeClass = 'badge-borrowed';
       if (book.status === 'Lost') badgeClass = 'badge-lost';
       if (book.status === 'Unavailable') badgeClass = 'badge-lost';
+
+      const genres = book.genre ? book.genre.split(',').map(g => g.trim()).filter(Boolean) : [];
+      const genreChips = genres.slice(0, 2).map(g => `<span class="genre-chip">${g}</span>`).join('');
+      const metaPills = [
+        book.pages ? `<span class="book-meta-pill">${ICONS.pages} ${book.pages}p</span>` : '',
+        book.publish_year ? `<span class="book-meta-pill">${book.publish_year}</span>` : ''
+      ].filter(Boolean).join('');
 
       return `
         <div class="glass-card book-card" data-book-id="${book.book_id}">
@@ -438,9 +547,12 @@ class UiService {
           <div class="book-info">
             <h3 class="book-title" title="${book.title}">${book.title}</h3>
             <div class="book-author">by ${book.author}</div>
-            <div style="margin-top: 0.25rem;">
+            ${genreChips || metaPills ? `
+              <div style="display:flex; flex-wrap:wrap; gap:0.3rem; margin-bottom:0.4rem;">${genreChips}${metaPills}</div>
+            ` : ''}
+            <div style="margin-top: 0.25rem; margin-bottom: 0.5rem;">
               <a href="https://www.goodreads.com/search?q=${encodeURIComponent(book.isbn || (book.title + ' ' + book.author))}" target="_blank" rel="noopener noreferrer" style="font-size: 0.75rem; display: inline-flex; align-items: center; gap: 4px; color: var(--accent-gold); font-weight: 500; text-decoration: underline;">
-                ${ICONS.external} View on Goodreads
+                ${ICONS.external} Goodreads
               </a>
             </div>
             
@@ -454,39 +566,27 @@ class UiService {
             ${!isAvailable && book.borrower_name ? `
               <div class="book-borrower" style="margin-top: 0.5rem; font-size: 0.75rem; display: flex; align-items: center; gap: 6px; color: var(--text-secondary); background: var(--nav-link-hover-bg); padding: 0.35rem 0.6rem; border-radius: var(--radius-sm); border: 1px solid var(--border-color);">
                 ${ICONS.user}
-                <span>
-                  ${book.status === 'Borrowed' ? 'Borrowed by' : 'Requested by'}: <strong>${book.borrower_name}</strong> (Flat ${book.borrower_flat})
-                </span>
+                <span>${book.status === 'Borrowed' ? 'Borrowed by' : 'Requested by'}: <strong>${book.borrower_name}</strong> (Flat ${book.borrower_flat})</span>
               </div>
             ` : ''}
             
             <div style="margin-top: 1rem; width: 100%;">
               ${isOwner ? `
-                <!-- Own book: standard controls -->
                 <div style="display:flex; flex-direction:column; gap:0.4rem; width:100%;">
                   <div style="display:flex; gap:0.4rem;">
                     <button class="btn btn-secondary btn-sm btn-owner-edit" data-id="${book.book_id}" style="flex:1; gap:0.3rem;">${ICONS.edit} Edit</button>
-                    <button class="btn btn-secondary btn-sm btn-owner-toggle" data-id="${book.book_id}" style="flex:1; gap:0.3rem;">
-                      ${book.status === 'Unavailable' ? `${ICONS.unlock} Available` : `${ICONS.lock} Pause`}
-                    </button>
+                    <button class="btn btn-secondary btn-sm btn-owner-toggle" data-id="${book.book_id}" style="flex:1; gap:0.3rem;">${book.status === 'Unavailable' ? `${ICONS.unlock} Available` : `${ICONS.lock} Pause`}</button>
                   </div>
-                  <button class="btn btn-sm btn-owner-delete" data-id="${book.book_id}" style="width:100%; gap:0.3rem; background:rgba(244,63,94,0.1); border:1px solid rgba(244,63,94,0.25); color:var(--accent-rose);">
-                    ${ICONS.x} Remove Copy
-                  </button>
+                  <button class="btn btn-sm btn-owner-delete" data-id="${book.book_id}" style="width:100%; gap:0.3rem; background:rgba(244,63,94,0.1); border:1px solid rgba(244,63,94,0.25); color:var(--accent-rose);">${ICONS.x} Remove Copy</button>
                 </div>
               ` : isSystemOwner ? `
-                <!-- System Owner override on others' books -->
                 <div style="display:flex; flex-direction:column; gap:0.4rem; width:100%;">
                   <div style="font-size:0.65rem; color:var(--accent-rose); font-weight:600; opacity:0.75; text-align:center; letter-spacing:0.5px;">👑 OWNER OVERRIDE</div>
                   <div style="display:flex; gap:0.4rem;">
                     <button class="btn btn-secondary btn-sm btn-sysowner-edit" data-id="${book.book_id}" data-owner="${book.owner_name || 'the owner'}" style="flex:1; gap:0.3rem; border-color:rgba(244,63,94,0.4);">${ICONS.edit} Edit</button>
-                    <button class="btn btn-secondary btn-sm btn-sysowner-toggle" data-id="${book.book_id}" data-owner="${book.owner_name || 'the owner'}" style="flex:1; gap:0.3rem; border-color:rgba(244,63,94,0.4);">
-                      ${book.status === 'Unavailable' ? `${ICONS.unlock} Avail.` : `${ICONS.lock} Pause`}
-                    </button>
+                    <button class="btn btn-secondary btn-sm btn-sysowner-toggle" data-id="${book.book_id}" data-owner="${book.owner_name || 'the owner'}" style="flex:1; gap:0.3rem; border-color:rgba(244,63,94,0.4);">${book.status === 'Unavailable' ? `${ICONS.unlock} Avail.` : `${ICONS.lock} Pause`}</button>
                   </div>
-                  <button class="btn btn-sm btn-sysowner-delete" data-id="${book.book_id}" data-owner="${book.owner_name || 'the owner'}" style="width:100%; gap:0.3rem; background:rgba(244,63,94,0.08); border:1px solid rgba(244,63,94,0.3); color:var(--accent-rose);">
-                    ${ICONS.x} Remove Copy
-                  </button>
+                  <button class="btn btn-sm btn-sysowner-delete" data-id="${book.book_id}" data-owner="${book.owner_name || 'the owner'}" style="width:100%; gap:0.3rem; background:rgba(244,63,94,0.08); border:1px solid rgba(244,63,94,0.3); color:var(--accent-rose);">${ICONS.x} Remove Copy</button>
                 </div>
               ` : isAvailable && currentUser && currentUser.status === 'Approved' ? `
                 <button class="btn btn-primary btn-sm btn-request-borrow" data-id="${book.book_id}" style="width: 100%;">Request</button>
@@ -502,6 +602,21 @@ class UiService {
       `;
     }).join('');
 
+    this._bindBookGridEvents(books, currentUser, grid);
+
+    // Bind fallback covers
+    grid.querySelectorAll('.book-cover').forEach(img => {
+      img.addEventListener('error', () => {
+        const bookCard = img.closest('[data-book-id]');
+        const bookId = bookCard ? bookCard.getAttribute('data-book-id') : null;
+        const book = bookId ? books.find(b => b.book_id === bookId) : null;
+        const title = book ? book.title : 'Book';
+        img.parentElement.innerHTML = `<div class="book-no-cover">${ICONS.book}<span>${title}</span></div>`;
+      });
+    });
+  }
+
+  _bindBookGridEvents(books, currentUser, grid) {
     // Bind request buttons
     grid.querySelectorAll('.btn-request-borrow').forEach(btn => {
       btn.addEventListener('click', (e) => {
@@ -601,21 +716,6 @@ class UiService {
       });
     });
 
-    // Bind fallback covers for broken image URLs to avoid inline onerror parsing errors
-    grid.querySelectorAll('.book-cover').forEach(img => {
-      img.addEventListener('error', () => {
-        const bookCard = img.closest('.book-card');
-        const bookId = bookCard.getAttribute('data-book-id');
-        const book = books.find(b => b.book_id === bookId);
-        const title = book ? book.title : 'Book';
-        img.parentElement.innerHTML = `
-          <div class="book-no-cover">
-            ${ICONS.book}
-            <span>${title}</span>
-          </div>
-        `;
-      });
-    });
   }
 
   /**
@@ -1621,6 +1721,35 @@ class UiService {
           </select>
         </div>
 
+        <button type="button" class="details-toggle-btn" id="btn-toggle-extra-details">
+          <span>📚 Additional Details (Genre, Pages, Language…)</span>
+          <span id="extra-details-arrow">▼</span>
+        </button>
+        <div class="extra-details-section" id="extra-details-section">
+          <div class="extra-details-grid">
+            <div class="form-group" style="margin-bottom:0;">
+              <label class="form-label" for="book-genre">Genre(s)</label>
+              <input type="text" class="form-control" id="book-genre" placeholder="e.g. Fantasy, Adventure">
+            </div>
+            <div class="form-group" style="margin-bottom:0;">
+              <label class="form-label" for="book-pages">Pages</label>
+              <input type="number" class="form-control" id="book-pages" placeholder="e.g. 310" min="1">
+            </div>
+            <div class="form-group" style="margin-bottom:0;">
+              <label class="form-label" for="book-language">Language</label>
+              <input type="text" class="form-control" id="book-language" placeholder="e.g. English" value="English">
+            </div>
+            <div class="form-group" style="margin-bottom:0;">
+              <label class="form-label" for="book-publish-year">Publish Year</label>
+              <input type="number" class="form-control" id="book-publish-year" placeholder="e.g. 1954" min="1000" max="2100">
+            </div>
+            <div class="form-group" style="margin-bottom:0; grid-column: 1 / -1;">
+              <label class="form-label" for="book-publisher">Publisher</label>
+              <input type="text" class="form-control" id="book-publisher" placeholder="e.g. HarperCollins">
+            </div>
+          </div>
+        </div>
+
         <div style="display: flex; justify-content: flex-end; gap: 0.75rem; margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid var(--border-color);">
           <button type="button" class="btn btn-secondary" id="btn-add-cancel">Cancel</button>
           <button type="submit" class="btn btn-primary" id="btn-add-submit">Add to Library</button>
@@ -1632,6 +1761,14 @@ class UiService {
 
     // Cancel Button
     document.getElementById('btn-add-cancel').addEventListener('click', () => this.hideModal());
+
+    // Extra details toggle
+    document.getElementById('btn-toggle-extra-details').addEventListener('click', () => {
+      const section = document.getElementById('extra-details-section');
+      const arrow = document.getElementById('extra-details-arrow');
+      section.classList.toggle('open');
+      arrow.textContent = section.classList.contains('open') ? '▲' : '▼';
+    });
 
     // Search and Autofill logic!
     const searchInput = document.getElementById('book-search-query');
@@ -1945,6 +2082,35 @@ class UiService {
               document.getElementById('book-author').value = doc.author_name ? doc.author_name.join(', ') : 'Unknown';
               document.getElementById('book-isbn').value = doc.isbn ? doc.isbn[0] : '';
 
+              // Auto-populate extra details from Open Library data
+              const extraSection = document.getElementById('extra-details-section');
+              const extraArrow = document.getElementById('extra-details-arrow');
+              if (doc.first_publish_year) {
+                document.getElementById('book-publish-year').value = doc.first_publish_year;
+              }
+              if (doc.number_of_pages_median) {
+                document.getElementById('book-pages').value = doc.number_of_pages_median;
+              }
+              if (doc.publisher && doc.publisher.length > 0) {
+                document.getElementById('book-publisher').value = doc.publisher[0];
+              }
+              if (doc.language && doc.language.length > 0) {
+                // Convert language codes like 'eng' to 'English' where possible
+                const langMap = { eng: 'English', fre: 'French', ger: 'German', spa: 'Spanish', hin: 'Hindi', mar: 'Marathi' };
+                document.getElementById('book-language').value = langMap[doc.language[0]] || doc.language[0];
+              }
+              if (doc.subject && doc.subject.length > 0) {
+                // Take first 3 subjects as genre tags
+                document.getElementById('book-genre').value = doc.subject.slice(0, 3).join(', ');
+              }
+              // Auto-open extra details if any were populated
+              if (doc.first_publish_year || doc.number_of_pages_median || doc.publisher || doc.subject) {
+                if (extraSection && !extraSection.classList.contains('open')) {
+                  extraSection.classList.add('open');
+                  if (extraArrow) extraArrow.textContent = '▲';
+                }
+              }
+
               resultsPicker.style.display = 'none';
               resultsPicker.innerHTML = '';
 
@@ -1955,7 +2121,6 @@ class UiService {
               alertDesc.innerText = `Selected "${doc.title}"`;
               this.showToast("Book details retrieved successfully!");
 
-              // Render Carousel!
               await renderCoverCarousel(doc);
             });
 
@@ -2018,7 +2183,12 @@ class UiService {
         author: document.getElementById('book-author').value,
         isbn: document.getElementById('book-isbn').value,
         coverUrl: document.getElementById('book-cover').value,
-        copies: document.getElementById('book-copies').value
+        copies: document.getElementById('book-copies').value,
+        genre: document.getElementById('book-genre').value,
+        pages: document.getElementById('book-pages').value,
+        language: document.getElementById('book-language').value,
+        publisher: document.getElementById('book-publisher').value,
+        publishYear: document.getElementById('book-publish-year').value
       };
 
       if (this.onActionCallback) {
@@ -2075,6 +2245,35 @@ class UiService {
           <input type="text" class="form-control" id="book-edit-isbn" value="${book.isbn || ''}" placeholder="e.g. 9780261102217" autocomplete="off">
         </div>
 
+        <button type="button" class="details-toggle-btn" id="btn-edit-toggle-extra">
+          <span>📚 Additional Details</span>
+          <span id="edit-extra-arrow">▼</span>
+        </button>
+        <div class="extra-details-section" id="edit-extra-details-section">
+          <div class="extra-details-grid">
+            <div class="form-group" style="margin-bottom:0;">
+              <label class="form-label" for="book-edit-genre">Genre(s)</label>
+              <input type="text" class="form-control" id="book-edit-genre" value="${book.genre || ''}" placeholder="e.g. Fantasy, Adventure">
+            </div>
+            <div class="form-group" style="margin-bottom:0;">
+              <label class="form-label" for="book-edit-pages">Pages</label>
+              <input type="number" class="form-control" id="book-edit-pages" value="${book.pages || ''}" placeholder="e.g. 310" min="1">
+            </div>
+            <div class="form-group" style="margin-bottom:0;">
+              <label class="form-label" for="book-edit-language">Language</label>
+              <input type="text" class="form-control" id="book-edit-language" value="${book.language || 'English'}" placeholder="e.g. English">
+            </div>
+            <div class="form-group" style="margin-bottom:0;">
+              <label class="form-label" for="book-edit-publish-year">Publish Year</label>
+              <input type="number" class="form-control" id="book-edit-publish-year" value="${book.publish_year || ''}" placeholder="e.g. 1954" min="1000" max="2100">
+            </div>
+            <div class="form-group" style="margin-bottom:0; grid-column: 1 / -1;">
+              <label class="form-label" for="book-edit-publisher">Publisher</label>
+              <input type="text" class="form-control" id="book-edit-publisher" value="${book.publisher || ''}" placeholder="e.g. HarperCollins">
+            </div>
+          </div>
+        </div>
+
         <div class="form-group">
           <label class="form-label" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.5rem;">
             <span>Cover Image</span>
@@ -2109,6 +2308,21 @@ class UiService {
 
     this.showModal(`Edit: ${book.title}`, bodyHtml);
     document.getElementById('book-edit-cancel').addEventListener('click', () => this.hideModal());
+
+    // Toggle extra details
+    document.getElementById('btn-edit-toggle-extra').addEventListener('click', () => {
+      const s = document.getElementById('edit-extra-details-section');
+      const a = document.getElementById('edit-extra-arrow');
+      s.classList.toggle('open');
+      a.textContent = s.classList.contains('open') ? '▲' : '▼';
+      // If the book already has extra data, auto-open on first render
+    });
+    // Auto-open if book has extra data
+    if (book.genre || book.pages || book.publisher) {
+      const s = document.getElementById('edit-extra-details-section');
+      const a = document.getElementById('edit-extra-arrow');
+      if (s) { s.classList.add('open'); if (a) a.textContent = '▲'; }
+    }
 
     const coverValueInput = document.getElementById('book-edit-cover-value');
     const coverImg = document.getElementById('book-edit-cover-img');
@@ -2258,7 +2472,6 @@ class UiService {
     // Form submit
     document.getElementById('owner-edit-book-form').addEventListener('submit', (e) => {
       e.preventDefault();
-      // If in custom URL mode, use that input value
       if (customMode) {
         coverValueInput.value = document.getElementById('book-edit-cover-url').value;
       }
@@ -2266,7 +2479,12 @@ class UiService {
         bookId: book.book_id,
         author: document.getElementById('book-edit-author').value,
         isbn: document.getElementById('book-edit-isbn').value,
-        coverUrl: coverValueInput.value
+        coverUrl: coverValueInput.value,
+        genre: document.getElementById('book-edit-genre').value,
+        pages: document.getElementById('book-edit-pages').value,
+        language: document.getElementById('book-edit-language').value,
+        publisher: document.getElementById('book-edit-publisher').value,
+        publishYear: document.getElementById('book-edit-publish-year').value
       };
       
       const doSubmit = () => {
@@ -2293,16 +2511,19 @@ class UiService {
           <div style="width: 80px; aspect-ratio: 2/3; border-radius: var(--radius-sm); overflow:hidden; border: 1px solid var(--border-color); background: #1e293b; flex-shrink:0;">
             ${book.cover_url ? `<img src="${book.cover_url}" style="width:100%; height:100%; object-fit:cover;">` : `<div style="display:flex; align-items:center; justify-content:center; height:100%; color: var(--text-muted);">${ICONS.book}</div>`}
           </div>
-          <div>
+          <div style="flex-grow:1;">
             <h3 style="font-size: 1.1rem; font-family: var(--font-title); color: var(--text-primary);">${book.title}</h3>
-            <div style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 0.5rem;">by ${book.author}</div>
-            <div style="margin-top: -0.25rem; margin-bottom: 0.5rem;">
-              <a href="https://www.goodreads.com/search?q=${encodeURIComponent(book.isbn || (book.title + ' ' + book.author))}" target="_blank" rel="noopener noreferrer" style="font-size: 0.75rem; display: inline-flex; align-items: center; gap: 4px; color: var(--accent-gold); font-weight: 500; text-decoration: underline;">
-                ${ICONS.external} View on Goodreads
-              </a>
+            <div style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 0.4rem;">by ${book.author}</div>
+            ${book.genre ? `<div style="margin-bottom:0.4rem;">${book.genre.split(',').map(g => `<span class="genre-chip">${g.trim()}</span>`).join(' ')}</div>` : ''}
+            <div style="margin-bottom: 0.5rem;">
+              <a href="https://www.goodreads.com/search?q=${encodeURIComponent(book.isbn || (book.title + ' ' + book.author))}" target="_blank" rel="noopener noreferrer" style="font-size: 0.75rem; display: inline-flex; align-items: center; gap: 4px; color: var(--accent-gold); font-weight: 500; text-decoration: underline;">${ICONS.external} Goodreads</a>
             </div>
-            <div style="font-size: 0.8rem; color: var(--text-muted);">
-              Lender Flat: <strong>${book.owner_flat}</strong> (${book.owner_name})
+            <div style="font-size:0.78rem;">
+              ${book.pages ? `<div class="book-meta-row"><span class="book-meta-label">Pages</span><span class="book-meta-value">${book.pages}</span></div>` : ''}
+              ${book.language ? `<div class="book-meta-row"><span class="book-meta-label">Language</span><span class="book-meta-value">${book.language}</span></div>` : ''}
+              ${book.publisher ? `<div class="book-meta-row"><span class="book-meta-label">Publisher</span><span class="book-meta-value">${book.publisher}</span></div>` : ''}
+              ${book.publish_year ? `<div class="book-meta-row"><span class="book-meta-label">Published</span><span class="book-meta-value">${book.publish_year}</span></div>` : ''}
+              <div class="book-meta-row"><span class="book-meta-label">Lender</span><span class="book-meta-value">Flat ${book.owner_flat} &middot; ${book.owner_name}</span></div>
             </div>
           </div>
         </div>

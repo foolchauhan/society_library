@@ -45,7 +45,7 @@ function setupDatabase() {
     booksSheet = SPREADSHEET.insertSheet(TABS.BOOKS);
   }
   booksSheet.clear();
-  booksSheet.appendRow(['book_id', 'title', 'author', 'isbn', 'cover_url', 'owner_email', 'copy_number', 'status', 'created_at']);
+  booksSheet.appendRow(['book_id', 'title', 'author', 'isbn', 'cover_url', 'genre', 'pages', 'language', 'publisher', 'publish_year', 'owner_email', 'copy_number', 'status', 'created_at']);
   booksSheet.getRange("1:1").setFontWeight("bold").setBackground("#CFF4FC");
   booksSheet.setFrozenRows(1);
 
@@ -368,6 +368,11 @@ function addBook(payload, user) {
       payload.author || 'Unknown',
       payload.isbn || '',
       payload.coverUrl || '',
+      payload.genre || '',
+      payload.pages || '',
+      payload.language || '',
+      payload.publisher || '',
+      payload.publishYear || '',
       user.email,
       i.toString(),
       'Available',
@@ -380,6 +385,11 @@ function addBook(payload, user) {
       author: payload.author,
       isbn: payload.isbn,
       cover_url: payload.coverUrl,
+      genre: payload.genre || '',
+      pages: payload.pages || '',
+      language: payload.language || '',
+      publisher: payload.publisher || '',
+      publish_year: payload.publishYear || '',
       owner_email: user.email,
       copy_number: i.toString(),
       status: 'Available'
@@ -662,6 +672,11 @@ function editBook(payload, user) {
   if (payload.coverUrl !== undefined) updateCell(booksSheet, rowIndex, 'cover_url', payload.coverUrl);
   if (payload.author !== undefined) updateCell(booksSheet, rowIndex, 'author', payload.author);
   if (payload.status !== undefined) updateCell(booksSheet, rowIndex, 'status', payload.status);
+  if (payload.genre !== undefined) updateCell(booksSheet, rowIndex, 'genre', payload.genre);
+  if (payload.pages !== undefined) updateCell(booksSheet, rowIndex, 'pages', payload.pages);
+  if (payload.language !== undefined) updateCell(booksSheet, rowIndex, 'language', payload.language);
+  if (payload.publisher !== undefined) updateCell(booksSheet, rowIndex, 'publisher', payload.publisher);
+  if (payload.publishYear !== undefined) updateCell(booksSheet, rowIndex, 'publish_year', payload.publishYear);
 
   const updatedBook = getRowAsObject(booksSheet, rowIndex);
   return respond({ status: 'success', data: updatedBook });

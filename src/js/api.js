@@ -130,14 +130,14 @@ class ApiClient {
     if (!books || JSON.parse(books).length === 0) {
       const seedBooks = [
         // Amit Sharma (lender1@society.org) books
-        { book_id: 'B-seed-1', title: 'The Hobbit', author: 'J.R.R. Tolkien', isbn: '9780261102217', cover_url: 'https://covers.openlibrary.org/b/id/8405742-L.jpg', owner_email: 'lender1@society.org', copy_number: '1', status: 'Available', created_at: new Date().toISOString() },
-        { book_id: 'B-seed-2', title: 'The Hobbit', author: 'J.R.R. Tolkien', isbn: '9780261102217', cover_url: 'https://covers.openlibrary.org/b/id/8405742-L.jpg', owner_email: 'lender1@society.org', copy_number: '2', status: 'Borrowed', created_at: new Date().toISOString() },
-        { book_id: 'B-seed-3', title: '1984', author: 'George Orwell', isbn: '9780451524935', cover_url: 'https://covers.openlibrary.org/b/id/12836245-L.jpg', owner_email: 'lender1@society.org', copy_number: '1', status: 'Requested', created_at: new Date().toISOString() },
+        { book_id: 'B-seed-1', title: 'The Hobbit', author: 'J.R.R. Tolkien', isbn: '9780261102217', cover_url: 'https://covers.openlibrary.org/b/id/8405742-L.jpg', genre: 'Fantasy, Adventure', pages: '310', language: 'English', publisher: 'George Allen & Unwin', publish_year: '1937', owner_email: 'lender1@society.org', copy_number: '1', status: 'Available', created_at: new Date().toISOString() },
+        { book_id: 'B-seed-2', title: 'The Hobbit', author: 'J.R.R. Tolkien', isbn: '9780261102217', cover_url: 'https://covers.openlibrary.org/b/id/8405742-L.jpg', genre: 'Fantasy, Adventure', pages: '310', language: 'English', publisher: 'George Allen & Unwin', publish_year: '1937', owner_email: 'lender1@society.org', copy_number: '2', status: 'Borrowed', created_at: new Date().toISOString() },
+        { book_id: 'B-seed-3', title: '1984', author: 'George Orwell', isbn: '9780451524935', cover_url: 'https://covers.openlibrary.org/b/id/12836245-L.jpg', genre: 'Dystopian, Political Fiction', pages: '328', language: 'English', publisher: 'Secker & Warburg', publish_year: '1949', owner_email: 'lender1@society.org', copy_number: '1', status: 'Requested', created_at: new Date().toISOString() },
         
         // Sarah D'souza (lender2@society.org) books
-        { book_id: 'B-seed-4', title: 'The Hobbit', author: 'J.R.R. Tolkien', isbn: '9780261102217', cover_url: 'https://covers.openlibrary.org/b/id/8405742-L.jpg', owner_email: 'lender2@society.org', copy_number: '1', status: 'Available', created_at: new Date().toISOString() },
-        { book_id: 'B-seed-5', title: 'To Kill a Mockingbird', author: 'Harper Lee', isbn: '9780446310789', cover_url: 'https://covers.openlibrary.org/b/id/8225266-L.jpg', owner_email: 'lender2@society.org', copy_number: '1', status: 'Available', created_at: new Date().toISOString() },
-        { book_id: 'B-seed-6', title: 'Dune', author: 'Frank Herbert', isbn: '9780441172719', cover_url: 'https://covers.openlibrary.org/b/id/10237775-L.jpg', owner_email: 'lender2@society.org', copy_number: '1', status: 'Available', created_at: new Date().toISOString() }
+        { book_id: 'B-seed-4', title: 'The Hobbit', author: 'J.R.R. Tolkien', isbn: '9780261102217', cover_url: 'https://covers.openlibrary.org/b/id/8405742-L.jpg', genre: 'Fantasy, Adventure', pages: '310', language: 'English', publisher: 'George Allen & Unwin', publish_year: '1937', owner_email: 'lender2@society.org', copy_number: '1', status: 'Available', created_at: new Date().toISOString() },
+        { book_id: 'B-seed-5', title: 'To Kill a Mockingbird', author: 'Harper Lee', isbn: '9780446310789', cover_url: 'https://covers.openlibrary.org/b/id/8225266-L.jpg', genre: 'Fiction, Historical', pages: '281', language: 'English', publisher: 'J.B. Lippincott & Co.', publish_year: '1960', owner_email: 'lender2@society.org', copy_number: '1', status: 'Available', created_at: new Date().toISOString() },
+        { book_id: 'B-seed-6', title: 'Dune', author: 'Frank Herbert', isbn: '9780441172719', cover_url: 'https://covers.openlibrary.org/b/id/10237775-L.jpg', genre: 'Science Fiction, Epic', pages: '688', language: 'English', publisher: 'Chilton Books', publish_year: '1965', owner_email: 'lender2@society.org', copy_number: '1', status: 'Available', created_at: new Date().toISOString() }
       ];
       localStorage.setItem('lib_books', JSON.stringify(seedBooks));
     }
@@ -451,6 +451,11 @@ class ApiClient {
             author: payload.author || 'Unknown',
             isbn: payload.isbn || '',
             cover_url: payload.coverUrl || '',
+            genre: payload.genre || '',
+            pages: payload.pages || '',
+            language: payload.language || '',
+            publisher: payload.publisher || '',
+            publish_year: payload.publishYear || '',
             owner_email: currentMockUser.email,
             copy_number: i.toString(),
             status: 'Available',
@@ -475,6 +480,11 @@ class ApiClient {
         if (payload.author !== undefined) editBook.author = payload.author;
         if (payload.isbn !== undefined) editBook.isbn = payload.isbn;
         if (payload.coverUrl !== undefined) editBook.cover_url = payload.coverUrl;
+        if (payload.genre !== undefined) editBook.genre = payload.genre;
+        if (payload.pages !== undefined) editBook.pages = payload.pages;
+        if (payload.language !== undefined) editBook.language = payload.language;
+        if (payload.publisher !== undefined) editBook.publisher = payload.publisher;
+        if (payload.publishYear !== undefined) editBook.publish_year = payload.publishYear;
 
         localStorage.setItem('lib_books', JSON.stringify(books));
         return { status: 'success', data: editBook };

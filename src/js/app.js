@@ -3,8 +3,8 @@
  * Manages routing, auth state, and coordinates API and UI updates.
  */
 
-import { LibraryAPI } from './api.js?v=1.0.18';
-import { LibraryUI } from './ui.js?v=1.0.18';
+import { LibraryAPI } from './api.js?v=1.0.19';
+import { LibraryUI } from './ui.js?v=1.0.19';
 
 // ==========================================
 // CONFIGURATION
