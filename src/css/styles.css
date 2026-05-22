@@ -481,6 +481,13 @@ nav {
   overflow: hidden;
 }
 
+.book-card-actions {
+  display: flex;
+  gap: 0.4rem;
+  width: 100%;
+  margin-top: 0.4rem;
+}
+
 .book-cover-container {
   width: 100%;
   aspect-ratio: 2 / 3;
@@ -1143,6 +1150,20 @@ footer {
   .book-grid {
     grid-template-columns: repeat(2, 1fr) !important;
     gap: 0.75rem !important;
+  }
+
+  .book-card {
+    padding: 0.75rem !important;
+  }
+
+  .book-card-actions {
+    flex-direction: column !important;
+    gap: 0.35rem !important;
+  }
+
+  .book-card-actions .btn {
+    width: 100% !important;
+    justify-content: center !important;
   }
 
   .book-title {

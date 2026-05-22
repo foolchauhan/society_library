@@ -1042,7 +1042,7 @@ class UiService {
             <div style="margin-top: 1rem; width: 100%;">
               ${isOwner ? `
                 <div style="display:flex; flex-direction:column; gap:0.4rem; width:100%;">
-                  <div style="display:flex; gap:0.4rem;">
+                  <div class="book-card-actions">
                     <button class="btn btn-secondary btn-sm btn-owner-edit" data-id="${book.book_id}" style="flex:1; gap:0.3rem;">${ICONS.edit} Edit</button>
                     <button class="btn btn-secondary btn-sm btn-owner-toggle" data-id="${book.book_id}" style="flex:1; gap:0.3rem;">${book.status === 'Unavailable' ? `${ICONS.unlock} Available` : `${ICONS.lock} Pause`}</button>
                   </div>
@@ -1051,7 +1051,7 @@ class UiService {
               ` : isSystemOwner ? `
                 <div style="display:flex; flex-direction:column; gap:0.4rem; width:100%;">
                   <div style="font-size:0.65rem; color:var(--accent-rose); font-weight:600; opacity:0.75; text-align:center; letter-spacing:0.5px;">👑 OWNER OVERRIDE</div>
-                  <div style="display:flex; gap:0.4rem;">
+                  <div class="book-card-actions">
                     <button class="btn btn-secondary btn-sm btn-sysowner-edit" data-id="${book.book_id}" data-owner="${book.owner_name || 'the owner'}" style="flex:1; gap:0.3rem; border-color:rgba(244,63,94,0.4);">${ICONS.edit} Edit</button>
                     <button class="btn btn-secondary btn-sm btn-sysowner-toggle" data-id="${book.book_id}" data-owner="${book.owner_name || 'the owner'}" style="flex:1; gap:0.3rem; border-color:rgba(244,63,94,0.4);">${book.status === 'Unavailable' ? `${ICONS.unlock} Avail.` : `${ICONS.lock} Pause`}</button>
                   </div>
@@ -1393,7 +1393,7 @@ class UiService {
                     <div class="book-author" style="font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 0.5rem;">by ${book.author}</div>
                   </div>
                   <div style="display: flex; flex-direction: column; gap: 0.4rem; margin-top: auto; width: 100%;">
-                    <div style="display: flex; gap: 0.4rem;">
+                    <div class="book-card-actions">
                       <button class="btn btn-secondary btn-sm btn-owner-edit" data-id="${book.book_id}" style="flex: 1; padding: 0.35rem; font-size: 0.7rem; gap: 0.2rem; display: inline-flex; align-items: center; justify-content: center;">${ICONS.edit} Edit</button>
                       <button class="btn btn-secondary btn-sm btn-owner-toggle" data-id="${book.book_id}" style="flex: 1; padding: 0.35rem; font-size: 0.7rem; gap: 0.2rem; display: inline-flex; align-items: center; justify-content: center;">
                         ${book.status === 'Unavailable' ? `${ICONS.unlock} Resume` : `${ICONS.lock} Pause`}
