@@ -1224,34 +1224,42 @@ footer {
     gap: 0.5rem;
   }
 
-  /* Floating Action Button style */
-  .fab-add-book {
-    display: flex !important;
-    position: fixed;
-    bottom: 80px; /* Above the bottom nav */
-    right: 20px;
-    width: 56px;
-    height: 56px;
+  /* Center Add Button inside Bottom Nav */
+  .bottom-nav-add-btn {
+    background: none;
+    border: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    cursor: pointer;
+    flex: 1;
+    min-width: 56px;
+    padding: 0;
+    transition: transform var(--transition-fast);
+  }
+
+  .bottom-nav-add-icon-wrapper {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 48px;
+    height: 48px;
     border-radius: 50%;
     background: linear-gradient(135deg, var(--accent-emerald), #059669);
     color: #ffffff;
-    border: none;
-    align-items: center;
-    justify-content: center;
-    box-shadow: 0 4px 14px var(--accent-emerald-glow), 0 2px 5px rgba(0,0,0,0.2);
-    z-index: 90;
-    cursor: pointer;
-    transition: transform var(--transition-fast), background var(--transition-fast);
+    box-shadow: 0 4px 12px var(--accent-emerald-glow), 0 2px 5px rgba(0,0,0,0.2);
+    transition: transform var(--transition-fast);
   }
 
-  .fab-add-book:active {
+  .bottom-nav-add-btn:active .bottom-nav-add-icon-wrapper {
     transform: scale(0.9);
   }
 
-  .fab-add-book svg {
-    width: 24px;
-    height: 24px;
-    stroke-width: 2.5px;
+  .bottom-nav-add-icon-wrapper svg {
+    width: 22px;
+    height: 22px;
+    stroke-width: 3px;
   }
 
   /* Sticky Bottom Navigation */
@@ -1284,7 +1292,7 @@ footer {
     gap: 4px;
     font-size: 0.7rem;
     font-weight: 500;
-    width: 25%;
+    flex: 1;
     height: 100%;
     cursor: pointer;
     transition: color var(--transition-fast), transform var(--transition-fast);

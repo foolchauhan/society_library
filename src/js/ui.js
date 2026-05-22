@@ -550,6 +550,15 @@ class UiService {
         `;
       }
       
+      // Center Add Button inside bottom nav for mobile lenders
+      if (role === 'Lender' || role === 'Both' || role === 'Admin' || role === 'Owner') {
+        bottomLinksHtml += `
+          <button class="bottom-nav-add-btn" id="bottom-nav-add-btn" type="button" title="Lend a Book">
+            <div class="bottom-nav-add-icon-wrapper">${ICONS.plus}</div>
+          </button>
+        `;
+      }
+      
       if (role === 'Lender' || role === 'Both' || role === 'Admin' || role === 'Owner') {
         bottomLinksHtml += `
           <button class="bottom-nav-link" data-view="lender">
@@ -580,6 +589,16 @@ class UiService {
           }
         });
       });
+
+      // Bind click handler for center Add Book button
+      const bottomAddBtn = document.getElementById('bottom-nav-add-btn');
+      if (bottomAddBtn) {
+        bottomAddBtn.addEventListener('click', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          this.showAddBookForm();
+        });
+      }
     }
   }
 
@@ -867,19 +886,9 @@ class UiService {
     const addBtn = document.getElementById('btn-add-book');
     if (addBtn) addBtn.addEventListener('click', () => this.showAddBookForm());
 
-    // Render FAB for mobile if authorized
-    if (currentUser && currentUser.status === 'Approved' && (currentUser.role === 'Lender' || currentUser.role === 'Both' || currentUser.role === 'Admin' || currentUser.role === 'Owner')) {
-      const existingFab = document.getElementById('fab-add-book');
-      if (existingFab) existingFab.remove();
-      
-      const fab = document.createElement('button');
-      fab.id = 'fab-add-book';
-      fab.className = 'fab-add-book';
-      fab.innerHTML = ICONS.plus;
-      fab.title = 'Lend a Book';
-      fab.addEventListener('click', () => this.showAddBookForm());
-      viewContainer.appendChild(fab);
-    }
+    // Mobile FAB has been replaced by the persistent center Add button in the bottom navigation bar
+    const existingFab = document.getElementById('fab-add-book');
+    if (existingFab) existingFab.remove();
   }
 
   renderBookGrid(books, currentUser, viewMode = 'grid') {
