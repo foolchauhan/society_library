@@ -77,8 +77,11 @@ function setupDatabase() {
   try {
     GmailApp.getAliases();
   } catch (e) {
-  // Create daily 3 PM trigger
-  createDailyTrigger();
+    Logger.log("GmailApp initialization: " + e.toString());
+  }
+
+  // Create daily time-driven triggers
+  createTimeDrivenTriggers();
 
   Logger.log("Database initialized successfully!");
 }
@@ -1282,7 +1285,7 @@ function testEmail() {
 }
 
 /**
- * Runs a daily check to notify users about overdue loans and alert lenders.
+ * Trigger 1: Runs a daily check to notify users about overdue loans.
  */
 function dailyCheckOverdueLoans() {
   try {
@@ -1291,7 +1294,7 @@ function dailyCheckOverdueLoans() {
     const usersSheet = SPREADSHEET.getSheetByName(TABS.USERS);
     
     if (!loansSheet || !booksSheet || !usersSheet) {
-      Logger.log("Missing database sheets during daily check.");
+      Logger.log("Missing database sheets during daily overdue check.");
       return;
     }
 
@@ -1302,9 +1305,6 @@ function dailyCheckOverdueLoans() {
     const now = new Date();
     const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
 
-    // ========================================================
-    // PART 1: Overdue Loans Check (Status: Out, past due_date)
-    // ========================================================
     let overdueCount = 0;
     loans.forEach(loan => {
       if (loan.status === 'Out' && loan.due_date) {
@@ -1380,62 +1380,30 @@ function dailyCheckOverdueLoans() {
       }
     });
 
-    // ========================================================
-    // PART 2: Pending User Approvals (status === 'Pending')
-    // ========================================================
-    const pendingUsers = users.filter(u => u.status === 'Pending');
-    if (pendingUsers.length > 0) {
-      const adminList = getAdminsAndOwnerEmails();
-      if (adminList) {
-        const baseUrl = 'https://foolchauhan.github.io/society_library';
-        const actionLink = `${baseUrl}?view=admin`;
-        const subject = `⚠️ ACTION REQUIRED: ${pendingUsers.length} New Resident Sign-up${pendingUsers.length > 1 ? 's' : ''} Pending Approval`;
-        
-        let usersTableHtml = `
-          <table border="1" cellpadding="6" cellspacing="0" style="border-collapse: collapse; font-size: 13px; color: #2c241b; border-color: #ebdcb9; width: 100%;">
-            <tr bgcolor="#f5f0e4" style="font-weight: bold; text-align: left;">
-              <th>Name</th>
-              <th>Email</th>
-              <th>Flat</th>
-              <th>Role</th>
-              <th>Registered Date</th>
-            </tr>
-        `;
-        pendingUsers.forEach(pu => {
-          const regDate = pu.created_at ? new Date(pu.created_at).toLocaleDateString() : 'N/A';
-          usersTableHtml += `
-            <tr>
-              <td>${pu.name}</td>
-              <td>${pu.email}</td>
-              <td>${pu.flat_number || 'N/A'}</td>
-              <td>${pu.role || 'Both'}</td>
-              <td>${regDate}</td>
-            </tr>
-          `;
-        });
-        usersTableHtml += `</table>`;
+    Logger.log(`Daily overdue check complete. Overdue loans found: ${overdueCount}`);
+  } catch (err) {
+    Logger.log("Error in dailyCheckOverdueLoans: " + err.toString());
+  }
+}
 
-        const detailsHtml = `
-          Hello Administrator,<br/><br/>
-          The following neighborhood residents have registered on the library portal and are awaiting approval:<br/><br/>
-          ${usersTableHtml}<br/>
-          Please approve their accounts to grant them library search, borrow, and lend permissions.
-        `;
-
-        const htmlBody = generateHtmlEmail(subject, "Pending Resident Approvals", detailsHtml, actionLink, "Go to Admin Panel");
-        sendEmailNotification(
-          adminList, 
-          subject, 
-          `Hello Administrator, there are ${pendingUsers.length} residents awaiting sign-up approval in the Society Library system.`, 
-          htmlBody
-        );
-        Logger.log(`Daily alert sent for ${pendingUsers.length} pending user approvals.`);
-      }
+/**
+ * Trigger 2: Runs a daily check for pending borrow and return actions for lenders.
+ */
+function dailyCheckLenderActions() {
+  try {
+    const loansSheet = SPREADSHEET.getSheetByName(TABS.LOANS);
+    const booksSheet = SPREADSHEET.getSheetByName(TABS.BOOKS);
+    const usersSheet = SPREADSHEET.getSheetByName(TABS.USERS);
+    
+    if (!loansSheet || !booksSheet || !usersSheet) {
+      Logger.log("Missing database sheets during daily lender actions check.");
+      return;
     }
 
-    // ========================================================
-    // PART 3: Pending Action Items for Lenders (Requested or ReturnPending)
-    // ========================================================
+    const loans = getSheetDataAsObjects(loansSheet);
+    const books = getSheetDataAsObjects(booksSheet);
+    const users = getSheetDataAsObjects(usersSheet);
+
     const pendingLenderActions = {};
 
     loans.forEach(loan => {
@@ -1517,34 +1485,105 @@ function dailyCheckOverdueLoans() {
       );
       Logger.log(`Daily actions email sent to lender: ${lenderEmail} (${totalActions} items).`);
     });
-
-    Logger.log(`Daily check complete. Overdue loans: ${overdueCount}. User approvals pending: ${pendingUsers.length}.`);
   } catch (err) {
-    Logger.log("Error in dailyCheckOverdueLoans: " + err.toString());
+    Logger.log("Error in dailyCheckLenderActions: " + err.toString());
   }
 }
 
 /**
- * Programmatically creates a daily trigger to run the overdue check script at 3 PM
+ * Trigger 3: Runs a daily check for pending user sign-up registrations.
  */
-function createDailyTrigger() {
+function dailyCheckPendingUserApprovals() {
   try {
+    const usersSheet = SPREADSHEET.getSheetByName(TABS.USERS);
+    if (!usersSheet) {
+      Logger.log("Missing users sheet during daily pending user approvals check.");
+      return;
+    }
+
+    const users = getSheetDataAsObjects(usersSheet);
+    const pendingUsers = users.filter(u => u.status === 'Pending');
+    if (pendingUsers.length > 0) {
+      const adminList = getAdminsAndOwnerEmails();
+      if (adminList) {
+        const baseUrl = 'https://foolchauhan.github.io/society_library';
+        const actionLink = `${baseUrl}?view=admin`;
+        const subject = `⚠️ ACTION REQUIRED: ${pendingUsers.length} New Resident Sign-up${pendingUsers.length > 1 ? 's' : ''} Pending Approval`;
+        
+        let usersTableHtml = `
+          <table border="1" cellpadding="6" cellspacing="0" style="border-collapse: collapse; font-size: 13px; color: #2c241b; border-color: #ebdcb9; width: 100%;">
+            <tr bgcolor="#f5f0e4" style="font-weight: bold; text-align: left;">
+              <th>Name</th>
+              <th>Email</th>
+              <th>Flat</th>
+              <th>Role</th>
+              <th>Registered Date</th>
+            </tr>
+        `;
+        pendingUsers.forEach(pu => {
+          const regDate = pu.created_at ? new Date(pu.created_at).toLocaleDateString() : 'N/A';
+          usersTableHtml += `
+            <tr>
+              <td>${pu.name}</td>
+              <td>${pu.email}</td>
+              <td>${pu.flat_number || 'N/A'}</td>
+              <td>${pu.role || 'Both'}</td>
+              <td>${regDate}</td>
+            </tr>
+          `;
+        });
+        usersTableHtml += `</table>`;
+
+        const detailsHtml = `
+          Hello Administrator,<br/><br/>
+          The following neighborhood residents have registered on the library portal and are awaiting approval:<br/><br/>
+          ${usersTableHtml}<br/><br/>
+          Please approve their accounts to grant them library search, borrow, and lend permissions.
+        `;
+
+        const htmlBody = generateHtmlEmail(subject, "Pending Resident Approvals", detailsHtml, actionLink, "Go to Admin Panel");
+        sendEmailNotification(
+          adminList, 
+          subject, 
+          `Hello Administrator, there are ${pendingUsers.length} residents awaiting sign-up approval in the Society Library system.`, 
+          htmlBody
+        );
+        Logger.log(`Daily alert sent for ${pendingUsers.length} pending user approvals.`);
+      }
+    }
+  } catch (err) {
+    Logger.log("Error in dailyCheckPendingUserApprovals: " + err.toString());
+  }
+}
+
+/**
+ * Programmatically creates all daily triggers to run the check scripts daily at 3 PM
+ */
+function createTimeDrivenTriggers() {
+  try {
+    const handlers = [
+      'dailyCheckOverdueLoans',
+      'dailyCheckLenderActions',
+      'dailyCheckPendingUserApprovals'
+    ];
+
     const triggers = ScriptApp.getProjectTriggers();
     for (const trigger of triggers) {
-      if (trigger.getHandlerFunction() === 'dailyCheckOverdueLoans') {
+      if (handlers.includes(trigger.getHandlerFunction())) {
         ScriptApp.deleteTrigger(trigger);
       }
     }
     
-    // Create a time-driven trigger that fires every day at 3 PM (15:00 hours)
-    ScriptApp.newTrigger('dailyCheckOverdueLoans')
-      .timeBased()
-      .everyDays(1)
-      .atHour(15) // 3 PM (IST if project timezone is set to Kolkata)
-      .create();
-      
-    Logger.log("Daily overdue trigger successfully registered at 3 PM.");
+    // Set daily triggers to fire every day at 3 PM (15:00 hours)
+    handlers.forEach(handler => {
+      ScriptApp.newTrigger(handler)
+        .timeBased()
+        .everyDays(1)
+        .atHour(15) // 3 PM (IST if project timezone is set to Kolkata)
+        .create();
+      Logger.log(`Daily trigger for '${handler}' successfully registered at 3 PM.`);
+    });
   } catch (err) {
-    Logger.log("Failed to register daily trigger: " + err.toString());
+    Logger.log("Failed to register time-driven triggers: " + err.toString());
   }
 }
