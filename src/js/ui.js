@@ -1272,31 +1272,33 @@ class UiService {
         }
 
         return `
-          <div class="glass-card clickable-loan-card" data-book-id="${loan.book_id}" style="display: flex; gap: 1.25rem; align-items: flex-start; margin-bottom: 1rem; position: relative; cursor: pointer;">
-            <div style="width: 70px; aspect-ratio: 2/3; border-radius: var(--radius-sm); overflow:hidden; border: 1px solid var(--border-color); flex-shrink: 0; background: #1e293b;">
-              ${loan.book_cover ? `<img src="${loan.book_cover}" style="width:100%; height:100%; object-fit:cover;">` : `<div style="display:flex; align-items:center; justify-content:center; height:100%; color: var(--text-muted);">${ICONS.book}</div>`}
+          <div class="glass-card loan-card clickable-loan-card" data-book-id="${loan.book_id}">
+            <div class="loan-card-cover">
+              ${loan.book_cover
+                ? `<img src="${loan.book_cover}" style="width:100%; height:100%; object-fit:cover;" loading="lazy">`
+                : `<div class="loan-card-cover-placeholder">${ICONS.book}</div>`
+              }
             </div>
-            <div style="flex-grow: 1;">
-              <div style="display:flex; justify-content:space-between; align-items: flex-start; margin-bottom: 0.25rem;">
-                <h3 style="font-size: 1rem; font-family: var(--font-title); padding-right: 80px;">${loan.book_title}</h3>
+            <div class="loan-card-body">
+              <div class="loan-card-title-row">
+                <h3 class="loan-card-title">${loan.book_title}</h3>
                 ${statusBadge}
               </div>
-              <div style="font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 0.5rem;">by ${loan.book_author}</div>
-              <div style="margin-top: -0.25rem; margin-bottom: 0.5rem;">
-                <a href="https://www.goodreads.com/search?q=${encodeURIComponent(loan.book_title + ' ' + loan.book_author)}" target="_blank" rel="noopener noreferrer" style="font-size: 0.75rem; display: inline-flex; align-items: center; gap: 4px; color: var(--accent-gold); font-weight: 500; text-decoration: underline;">
+              <div class="loan-card-author">by ${loan.book_author}</div>
+              <div style="margin-bottom:0.4rem;">
+                <a href="https://www.goodreads.com/search?q=${encodeURIComponent(loan.book_title + ' ' + loan.book_author)}" target="_blank" rel="noopener noreferrer" class="loan-card-goodreads-link">
                   ${ICONS.external} View on Goodreads
                 </a>
               </div>
-              
-              <div style="font-size: 0.8rem;">
+              <div class="loan-card-details">
                 ${contactHtml}
                 <div class="detail-item"><span class="detail-label">Requested Duration</span><span class="detail-value">${loan.duration_days} days</span></div>
                 ${loan.due_date ? `<div class="detail-item"><span class="detail-label">Due Date</span><span class="detail-value">${new Date(loan.due_date).toLocaleDateString()}</span></div>` : ''}
               </div>
               ${progressHtml}
-            </div>
-            <div style="align-self: center; margin-left: auto; z-index: 5;">
-              ${actionButton}
+              <div class="loan-card-action">
+                ${actionButton}
+              </div>
             </div>
           </div>
         `;
