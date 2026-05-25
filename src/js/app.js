@@ -451,7 +451,6 @@ async function handleViewChange(view) {
   } catch (error) {
     LibraryUI.showToast("Failed to fetch dashboard data.", "error");
     console.error(error);
-  }
   } finally {
     hideLoader();
   }
