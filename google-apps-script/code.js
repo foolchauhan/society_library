@@ -77,8 +77,8 @@ function setupDatabase() {
   try {
     GmailApp.getAliases();
   } catch (e) {
-    Logger.log("GmailApp initialization: " + e.toString());
-  }
+  // Create daily 3 PM trigger
+  createDailyTrigger();
 
   Logger.log("Database initialized successfully!");
 }
@@ -255,7 +255,19 @@ function registerUser(payload, user) {
                    `Role: ${role}\n\n` +
                    `You can review and approve this resident directly here:\n${actionLink}\n\n` +
                    `Best regards,\nSociety Library System`;
-      sendEmailNotification(adminList, subject, body);
+                   
+      const detailsHtml = `
+        A new resident has registered for the Society Library and is pending approval:<br/><br/>
+        <table border="0" cellpadding="4" cellspacing="0" style="font-size: 14px; color: #2c241b; margin-bottom: 15px;">
+          <tr><td style="font-weight: bold; width: 120px;">Name:</td><td>${payload.name || user.name}</td></tr>
+          <tr><td style="font-weight: bold;">Email:</td><td>${user.email}</td></tr>
+          <tr><td style="font-weight: bold;">Flat Number:</td><td>${payload.flatNumber || 'N/A'}</td></tr>
+          <tr><td style="font-weight: bold;">Requested Role:</td><td>${role}</td></tr>
+        </table>
+        Please review and approve this resident registration on the library portal.
+      `;
+      const htmlBody = generateHtmlEmail(subject, "Registration Pending Approval", detailsHtml, actionLink, "Review & Approve Resident");
+      sendEmailNotification(adminList, subject, body, htmlBody);
     }
   }
 
@@ -497,7 +509,20 @@ function requestBook(payload, user) {
                `Borrower Notes: ${notes || 'None'}\n\n` +
                `You can review and approve/reject this request directly here:\n${actionLink}\n\n` +
                `Best regards,\nSociety Library System`;
-  sendEmailNotification(bookRow.owner_email, subject, body);
+               
+  const detailsHtml = `
+    A resident has requested to borrow your book <strong>"${bookRow.title}"</strong>:<br/><br/>
+    <table border="0" cellpadding="4" cellspacing="0" style="font-size: 14px; color: #2c241b; margin-bottom: 15px;">
+      <tr><td style="font-weight: bold; width: 120px;">Book Title:</td><td>"${bookRow.title}"</td></tr>
+      <tr><td style="font-weight: bold;">Author:</td><td>${bookRow.author || 'Unknown'}</td></tr>
+      <tr><td style="font-weight: bold;">Requested By:</td><td>${borrowerName} (Flat ${borrowerFlat})</td></tr>
+      <tr><td style="font-weight: bold;">Duration:</td><td>${durationDays} days</td></tr>
+      <tr><td style="font-weight: bold;">Borrower Notes:</td><td>${notes || 'None'}</td></tr>
+    </table>
+    Please review and approve or reject this request.
+  `;
+  const htmlBody = generateHtmlEmail(subject, "Borrow Request Received", detailsHtml, actionLink, "Review Borrow Request", bookRow.cover_url);
+  sendEmailNotification(bookRow.owner_email, subject, body, htmlBody);
 
   return respond({ status: 'success', loanId: loanId });
 }
@@ -540,7 +565,24 @@ function approveLoan(payload, user) {
                `Approved Duration: ${loan.duration_days} days\n\n` +
                `You can view the loan status and details here:\n${actionLink}\n\n` +
                `Best regards,\nSociety Library System`;
-  sendEmailNotification(loan.borrower_email, subject, body);
+
+  const lenderProfile = findRowByEmail(TABS.USERS, loan.lender_email) || { name: 'Lender', flat_number: 'N/A' };
+  const lenderName = lenderProfile.name || 'Lender';
+  const lenderFlat = lenderProfile.flat_number || 'N/A';
+
+  const detailsHtml = `
+    Your request to borrow <strong>"${bookTitle}"</strong> has been <strong>APPROVED</strong> by ${lenderName} (Flat ${lenderFlat}).<br/><br/>
+    Please coordinate with ${lenderName} at <strong>Flat ${lenderFlat}</strong> to physically receive the book. Once they hand it over, they will update the status to "Out" in the system.<br/><br/>
+    <table border="0" cellpadding="4" cellspacing="0" style="font-size: 14px; color: #2c241b; margin-bottom: 15px;">
+      <tr><td style="font-weight: bold; width: 120px;">Book Title:</td><td>"${bookTitle}"</td></tr>
+      <tr><td style="font-weight: bold;">Lender Name:</td><td>${lenderName} (Flat ${lenderFlat})</td></tr>
+      <tr><td style="font-weight: bold;">Lender Email:</td><td>${loan.lender_email}</td></tr>
+      <tr><td style="font-weight: bold;">Approved Duration:</td><td>${loan.duration_days} days</td></tr>
+    </table>
+    You can view the loan status on the library portal.
+  `;
+  const htmlBody = generateHtmlEmail(subject, "Borrow Request Approved! 🎉", detailsHtml, actionLink, "View Loan Details", book ? book.cover_url : '');
+  sendEmailNotification(loan.borrower_email, subject, body, htmlBody);
 
   return respond({ status: 'success' });
 }
@@ -583,7 +625,16 @@ function rejectLoan(payload, user) {
                `Unfortunately, your request to borrow "${bookTitle}" could not be approved by the lender at this time.\n\n` +
                `The book has been returned to the catalog. You can request another copy here:\n${actionLink}\n\n` +
                `Best regards,\nSociety Library System`;
-  sendEmailNotification(loan.borrower_email, subject, body);
+
+  const lenderProfile = findRowByEmail(TABS.USERS, loan.lender_email) || { name: 'Lender', flat_number: 'N/A' };
+  const lenderName = lenderProfile.name || 'Lender';
+
+  const detailsHtml = `
+    Unfortunately, your request to borrow <strong>"${bookTitle}"</strong> has been declined by the lender (${lenderName}).<br/><br/>
+    The book copy has been placed back in the active community catalog. You can browse the catalog and request another book or a different copy.<br/>
+  `;
+  const htmlBody = generateHtmlEmail(subject, "Borrow Request Declined", detailsHtml, actionLink, "Browse Library Catalog", book ? book.cover_url : '');
+  sendEmailNotification(loan.borrower_email, subject, body, htmlBody);
 
   return respond({ status: 'success' });
 }
@@ -688,7 +739,17 @@ function borrowerReturnBook(payload, user) {
 
   const subject = `Society Library: Return confirmation request for "${bookTitle}"`;
   const body = `Hello Lender,\n\nThe borrower (${loan.borrower_name || user.name}) has marked your book "${bookTitle}" as returned.\n\nPlease confirm receipt of the physical copy directly here:\n${actionLink}\n\nBest regards,\nSociety Library System`;
-  sendEmailNotification(loan.lender_email, subject, body);
+
+  const borrowerProfile = findRowByEmail(TABS.USERS, loan.borrower_email) || { name: 'Borrower', flat_number: 'N/A' };
+  const borrowerName = borrowerProfile.name || 'Borrower';
+  const borrowerFlat = borrowerProfile.flat_number || 'N/A';
+
+  const detailsHtml = `
+    The borrower <strong>${borrowerName}</strong> (Flat ${borrowerFlat}) has marked your book <strong>"${bookTitle}"</strong> as returned.<br/><br/>
+    Please verify that you have physically received the copy, and click below to confirm receipt on the portal. This will return the book to the available catalog list.<br/>
+  `;
+  const htmlBody = generateHtmlEmail(subject, "Confirm Book Receipt", detailsHtml, actionLink, "Confirm Receipt & Return", book ? book.cover_url : '');
+  sendEmailNotification(loan.lender_email, subject, body, htmlBody);
 
   return respond({ status: 'success', message: 'Return request submitted. Awaiting lender confirmation.' });
 }
@@ -714,8 +775,22 @@ function sendReturnReminder(payload, user) {
     }
   }
 
-  const subject = `Society Library: Reminder to return book`;
-  sendEmailNotification(loan.borrower_email, subject, customMessage);
+  const booksSheet = SPREADSHEET.getSheetByName(TABS.BOOKS);
+  const bookIndex = findRowIndexByKey(booksSheet, 'book_id', loan.book_id);
+  const book = bookIndex !== -1 ? getRowAsObject(booksSheet, bookIndex) : null;
+  const bookTitle = book ? book.title : 'Borrowed Book';
+  const coverUrl = book ? book.cover_url : '';
+
+  const baseUrl = payload.baseUrl || 'https://foolchauhan.github.io/society_library';
+  const actionLink = `${baseUrl}?view=book-details:${loan.book_id}`;
+
+  const subject = `⚠️ Society Library: Reminder to return "${bookTitle}"`;
+  
+  // Format custom message linebreaks to HTML
+  const messageHtml = customMessage.replace(/\n/g, '<br/>');
+
+  const htmlBody = generateHtmlEmail(subject, "Return Reminder", messageHtml, actionLink, "Mark Book as Returned", coverUrl);
+  sendEmailNotification(loan.borrower_email, subject, customMessage, htmlBody);
 
   return respond({ status: 'success', message: 'Reminder email sent to borrower!' });
 }
@@ -780,7 +855,14 @@ function adminUpdateUserStatus(payload, user) {
                  `You can now log in to search the catalog, borrow books from neighbors, and lend your own books.\n\n` +
                  `Access the library here:\n${actionLink}\n\n` +
                  `Happy Reading!\nSociety Library System`;
-    sendEmailNotification(targetUser.email, subject, body);
+
+    const detailsHtml = `
+      Hello ${targetUser.name || 'Resident'},<br/><br/>
+      We are pleased to inform you that your Society Library account has been <strong>approved</strong> by the administrators.<br/><br/>
+      You can now log in to search the community catalog, borrow books from neighbors, and lend your own books.<br/>
+    `;
+    const htmlBody = generateHtmlEmail(subject, "Account Approved! 🎉", detailsHtml, actionLink, "Enter Society Library");
+    sendEmailNotification(targetUser.email, subject, body, htmlBody);
   }
 
   return respond({ status: 'success' });
@@ -927,7 +1009,14 @@ function adminEditUser(payload, user) {
                  `You can now log in to search the catalog, borrow books from neighbors, and lend your own books.\n\n` +
                  `Access the library here:\n${actionLink}\n\n` +
                  `Happy Reading!\nSociety Library System`;
-    sendEmailNotification(targetUser.email, subject, body);
+
+    const detailsHtml = `
+      Hello ${targetUser.name || 'Resident'},<br/><br/>
+      We are pleased to inform you that your Society Library account has been <strong>approved</strong> by the administrators.<br/><br/>
+      You can now log in to search the community catalog, borrow books from neighbors, and lend your own books.<br/>
+    `;
+    const htmlBody = generateHtmlEmail(subject, "Account Approved! 🎉", detailsHtml, actionLink, "Enter Society Library");
+    sendEmailNotification(targetUser.email, subject, body, htmlBody);
   }
 
   const updatedTarget = getRowAsObject(usersSheet, rowIndex);
@@ -1035,14 +1124,127 @@ function respondError(message, code) {
 }
 
 // Helper to send email notifications safely
-function sendEmailNotification(to, subject, body) {
+function sendEmailNotification(to, subject, body, htmlBody) {
   try {
     if (!to) return;
-    GmailApp.sendEmail(to, subject, body);
+    const options = {};
+    if (htmlBody) {
+      options.htmlBody = htmlBody;
+    }
+    GmailApp.sendEmail(to, subject, body, options);
     Logger.log("Email sent successfully to: " + to);
   } catch (err) {
     Logger.log("Error sending email: " + err.toString());
   }
+}
+
+// Generates a highly professional HTML email layout with top/bottom call to action buttons
+function generateHtmlEmail(title, heading, detailsHtml, actionLink, actionText, coverUrl) {
+  const primaryColor = "#1a3a21"; // Deep Forest Green
+  const secondaryColor = "#b89047"; // Warm Vintage Gold
+  const bgColor = "#faf7f0"; // Parchment Paper Warm Background
+  const cardBg = "#ffffff";
+  const textColor = "#2c241b"; // Deep Ink
+
+  let coverImgHtml = "";
+  if (coverUrl) {
+    coverImgHtml = `
+      <td align="center" style="padding-bottom: 20px;">
+        <img src="${coverUrl}" alt="Book Cover" style="max-height: 180px; max-width: 140px; border-radius: 6px; box-shadow: 0 4px 10px rgba(0,0,0,0.15); border: 1px solid #e0dbd0;" />
+      </td>
+    `;
+  }
+
+  const actionButtonHtml = actionLink ? `
+    <table border="0" cellpadding="0" cellspacing="0" style="margin: 20px 0;">
+      <tr>
+        <td align="center" bgcolor="${primaryColor}" style="border-radius: 6px;">
+          <a href="${actionLink}" target="_blank" style="display: inline-block; padding: 12px 30px; font-family: Georgia, serif; font-size: 14px; font-weight: bold; color: #ffffff; text-decoration: none; border-radius: 6px; border: 1px solid ${secondaryColor}; letter-spacing: 0.5px;">
+            ${actionText}
+          </a>
+        </td>
+      </tr>
+    </table>
+  ` : "";
+
+  return `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="utf-8">
+      <title>${title}</title>
+    </head>
+    <body style="margin: 0; padding: 0; width: 100% !important; background-color: ${bgColor}; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+      <table align="center" border="0" cellpadding="0" cellspacing="0" width="100%" style="max-width: 600px; margin: 40px auto; border-radius: 12px; background-color: ${cardBg}; border: 1px solid #e5dfd3; box-shadow: 0 4px 12px rgba(0,0,0,0.05); overflow: hidden;">
+        
+        <!-- Header banner -->
+        <tr bgcolor="${primaryColor}">
+          <td align="center" style="padding: 24px 20px; border-bottom: 3px solid ${secondaryColor};">
+            <span style="font-family: Georgia, serif; font-size: 24px; font-weight: bold; color: #ffffff; letter-spacing: 1px;">
+              📚 Society Library
+            </span>
+          </td>
+        </tr>
+
+        <!-- Main Content -->
+        <tr>
+          <td style="padding: 35px 30px;">
+            <table border="0" cellpadding="0" cellspacing="0" width="100%">
+              <tr>
+                <td style="font-family: Georgia, serif; font-size: 20px; font-weight: bold; color: ${primaryColor}; padding-bottom: 20px; border-bottom: 1px solid #eee7d8;">
+                  ${heading}
+                </td>
+              </tr>
+              
+              <!-- Top Action Button -->
+              ${actionLink ? `
+              <tr>
+                <td align="center" style="padding-top: 15px;">
+                  ${actionButtonHtml}
+                </td>
+              </tr>
+              ` : ""}
+
+              <!-- Book cover & description row -->
+              <tr>
+                <td style="padding-top: 20px;">
+                  <table border="0" cellpadding="0" cellspacing="0" width="100%">
+                    <tr>
+                      ${coverImgHtml}
+                    </tr>
+                    <tr>
+                      <td style="font-size: 14px; line-height: 1.6; color: ${textColor};">
+                        ${detailsHtml}
+                      </td>
+                    </tr>
+                  </table>
+                </td>
+              </tr>
+
+              <!-- Bottom Action Button -->
+              ${actionLink ? `
+              <tr>
+                <td align="center" style="padding-top: 20px; border-top: 1px solid #eee7d8;">
+                  ${actionButtonHtml}
+                </td>
+              </tr>
+              ` : ""}
+            </table>
+          </td>
+        </tr>
+
+        <!-- Footer -->
+        <tr bgcolor="#f5f0e4">
+          <td align="center" style="padding: 20px; font-size: 11px; line-height: 1.4; color: #7a6e5d; border-top: 1px solid #ebdcb9;">
+            This is an automated notification from your neighborhood <strong>Society Library System</strong>.<br/>
+            Clicking the actions links will require you to log in with your resident account.<br/>
+            &copy; 2026 Society Library &middot; Shared community catalog.
+          </td>
+        </tr>
+      </table>
+    </body>
+    </html>
+  `;
 }
 
 // Fetch all active Admins/Owners to notify them
@@ -1066,10 +1268,148 @@ function getAdminsAndOwnerEmails() {
 function testEmail() {
   const email = Session.getActiveUser().getEmail();
   if (email) {
-    sendEmailNotification(email, "Society Library: Test Email Confirmation", 
-      "Hello! If you are reading this email, the Google Apps Script Gmail authorization is successfully working and configured.");
+    const subject = "Society Library: Test Email Confirmation";
+    const heading = "Gmail API Connection Successful! 🎉";
+    const details = `Hello Resident,<br/><br/>
+      If you are reading this email, the Google Apps Script Gmail authorization is successfully working and configured.<br/><br/>
+      All visual formatting features, tables, action buttons, and background triggers are ready to send notifications.`;
+    const htmlBody = generateHtmlEmail(subject, heading, details, "https://foolchauhan.github.io/society_library", "Visit Library Catalog");
+    sendEmailNotification(email, subject, "Hello! Gmail API connection is successfully working.", htmlBody);
     Logger.log("Test email sent to: " + email);
   } else {
     Logger.log("No active user found to send a test email to.");
+  }
+}
+
+/**
+ * Runs a daily check to notify users about overdue loans and alert lenders.
+ */
+function dailyCheckOverdueLoans() {
+  try {
+    const loansSheet = SPREADSHEET.getSheetByName(TABS.LOANS);
+    const booksSheet = SPREADSHEET.getSheetByName(TABS.BOOKS);
+    const usersSheet = SPREADSHEET.getSheetByName(TABS.USERS);
+    
+    if (!loansSheet || !booksSheet || !usersSheet) {
+      Logger.log("Missing database sheets during daily check.");
+      return;
+    }
+
+    const loans = getSheetDataAsObjects(loansSheet);
+    const books = getSheetDataAsObjects(booksSheet);
+    const users = getSheetDataAsObjects(usersSheet);
+
+    const now = new Date();
+    // Normalize time to start of day for accurate day differences
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+
+    let overdueCount = 0;
+
+    loans.forEach(loan => {
+      // Only process active borrowings currently out
+      if (loan.status === 'Out' && loan.due_date) {
+        const dueDate = new Date(loan.due_date);
+        const dueTime = new Date(dueDate.getFullYear(), dueDate.getMonth(), dueDate.getDate()).getTime();
+
+        if (todayStart > dueTime) {
+          overdueCount++;
+          const diffMs = todayStart - dueTime;
+          const daysLate = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+
+          // Find book info
+          const book = books.find(b => b.book_id === loan.book_id);
+          const bookTitle = book ? book.title : 'Borrowed Book';
+          const bookAuthor = book ? book.author : 'Unknown';
+          const coverUrl = book ? book.cover_url : '';
+
+          // Find lender & borrower details
+          const lender = users.find(u => u.email === loan.lender_email) || { name: 'Lender', flat_number: 'N/A' };
+          const borrower = users.find(u => u.email === loan.borrower_email) || { name: 'Borrower', flat_number: 'N/A' };
+
+          // Build action link
+          const baseUrl = 'https://foolchauhan.github.io/society_library'; 
+          const actionLink = `${baseUrl}?view=book-details:${loan.book_id}`;
+
+          // Send HTML Email to Borrower
+          const borrowerSubject = `⚠️ OVERDUE: Return reminder for "${bookTitle}" (Late by ${daysLate} day${daysLate > 1 ? 's' : ''})`;
+          const borrowerHeading = `Book Return Overdue by ${daysLate} Day${daysLate > 1 ? 's' : ''}`;
+          
+          const borrowerDetails = `
+            Dear ${borrower.name || 'Resident'},<br/><br/>
+            Our community library records show that the book you checked out is currently <strong>overdue</strong>:<br/><br/>
+            <table border="0" cellpadding="4" cellspacing="0" style="font-size: 14px; color: #2c241b; margin-bottom: 15px;">
+              <tr><td style="font-weight: bold; width: 130px;">Book Title:</td><td>"${bookTitle}" (by ${bookAuthor})</td></tr>
+              <tr><td style="font-weight: bold;">Lender Name:</td><td>${lender.name} (Flat ${lender.flat_number})</td></tr>
+              <tr><td style="font-weight: bold;">Due Date:</td><td>${dueDate.toLocaleDateString()}</td></tr>
+              <tr><td style="font-weight: bold;">Days Overdue:</td><td><span style="color:#be123c; font-weight:bold;">${daysLate} day${daysLate > 1 ? 's' : ''}</span></td></tr>
+            </table>
+            Please return the book physically to ${lender.name} at <strong>Flat ${lender.flat_number}</strong> as soon as possible, and click below to notify them on the portal.<br/>
+          `;
+
+          const borrowerHtml = generateHtmlEmail(borrowerSubject, borrowerHeading, borrowerDetails, actionLink, "Mark Book as Returned", coverUrl);
+          sendEmailNotification(
+            loan.borrower_email, 
+            borrowerSubject, 
+            `Dear ${borrower.name}, your checkout for "${bookTitle}" is ${daysLate} days overdue. Please return it to Flat ${lender.flat_number} as soon as possible.`, 
+            borrowerHtml
+          );
+
+          // Send HTML Email notification to Lender
+          const lenderSubject = `Society Library: Return reminder sent for your book "${bookTitle}"`;
+          const lenderHeading = `Return Reminder Dispatched`;
+          
+          const lenderDetails = `
+            Dear ${lender.name || 'Resident'},<br/><br/>
+            This is an automated notification that a return reminder email has been sent to <strong>${borrower.name}</strong> (Flat ${borrower.flat_number}) for your book copy:<br/><br/>
+            <table border="0" cellpadding="4" cellspacing="0" style="font-size: 14px; color: #2c241b; margin-bottom: 15px;">
+              <tr><td style="font-weight: bold; width: 130px;">Book Title:</td><td>"${bookTitle}"</td></tr>
+              <tr><td style="font-weight: bold;">Due Date:</td><td>${dueDate.toLocaleDateString()}</td></tr>
+              <tr><td style="font-weight: bold;">Days Overdue:</td><td><span style="color:#be123c; font-weight:bold;">${daysLate} day${daysLate > 1 ? 's' : ''}</span></td></tr>
+              <tr><td style="font-weight: bold;">Borrower Name:</td><td>${borrower.name} (Flat ${borrower.flat_number})</td></tr>
+            </table>
+            Once the borrower hands back the book, please confirm receipt on your dashboard to return the book to the available catalog list.<br/>
+          `;
+
+          const lenderHtml = generateHtmlEmail(lenderSubject, lenderHeading, lenderDetails, actionLink, "Confirm Receipt & Return", coverUrl);
+          sendEmailNotification(
+            loan.lender_email, 
+            lenderSubject, 
+            `Return reminder sent to ${borrower.name} for "${bookTitle}" (overdue by ${daysLate} days).`, 
+            lenderHtml
+          );
+
+          Logger.log(`Overdue reminder sent for loan ${loan.loan_id} (borrower: ${loan.borrower_email}, days late: ${daysLate})`);
+        }
+      }
+    });
+
+    Logger.log(`Daily check complete. Overdue loans found: ${overdueCount}`);
+  } catch (err) {
+    Logger.log("Error in dailyCheckOverdueLoans: " + err.toString());
+  }
+}
+
+/**
+ * Programmatically creates a daily trigger to run the overdue check script at 3 PM
+ */
+function createDailyTrigger() {
+  try {
+    const triggers = ScriptApp.getProjectTriggers();
+    for (const trigger of triggers) {
+      if (trigger.getHandlerFunction() === 'dailyCheckOverdueLoans') {
+        ScriptApp.deleteTrigger(trigger);
+      }
+    }
+    
+    // Create a time-driven trigger that fires every day at 3 PM (15:00 hours)
+    ScriptApp.newTrigger('dailyCheckOverdueLoans')
+      .timeBased()
+      .everyDays(1)
+      .atHour(15) // 3 PM (IST if project timezone is set to Kolkata)
+      .create();
+      
+    Logger.log("Daily overdue trigger successfully registered at 3 PM.");
+  } catch (err) {
+    Logger.log("Failed to register daily trigger: " + err.toString());
   }
 }

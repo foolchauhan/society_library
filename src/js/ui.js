@@ -3454,7 +3454,16 @@ class UiService {
     }
     const directLink = `${clientUrl}?view=book-details:${loan.book_id}`;
     
-    const defaultMessage = `Hi ${loan.borrower_name},\n\nThis is a friendly reminder to return the book "${loan.book_title}" (by ${loan.book_author}) which was borrowed on ${new Date(loan.handover_date).toLocaleDateString()}.\n\nYou can view the details and mark it as returned here:\n${directLink}\n\nThanks!`;
+    const defaultMessage = `Dear ${loan.borrower_name},
+
+This is a friendly reminder to return the book "${loan.book_title}" (by ${loan.book_author}), which you borrowed on ${new Date(loan.handover_date).toLocaleDateString()}.
+
+The loan is currently active, and the owner is requesting it back. Please coordinate the return at your earliest convenience.
+
+You can view the details and mark the book as returned here:
+${directLink}
+
+Thank you for contributing to our shared community library!`;
 
     const bodyHtml = `
       <form id="reminder-form" style="display:flex; flex-direction:column; gap:1.2rem;">
