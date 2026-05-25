@@ -753,6 +753,20 @@ class ApiClient {
         return { status: 'error', message: 'Unknown mock action: ' + action };
     }
   }
+
+  getCache(action) {
+    const data = localStorage.getItem(`lib_cache_${action}`);
+    return data ? JSON.parse(data) : null;
+  }
+
+  setCache(action, data) {
+    localStorage.setItem(`lib_cache_${action}`, JSON.stringify(data));
+  }
+
+  clearCache() {
+    const keys = ['lib_cache_getUserProfile', 'lib_cache_getCatalog', 'lib_cache_getLoans', 'lib_cache_getStats', 'lib_cache_adminGetUsers'];
+    keys.forEach(k => localStorage.removeItem(k));
+  }
 }
 
 export const LibraryAPI = new ApiClient();

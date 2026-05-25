@@ -198,11 +198,11 @@ function decodeJwt(token) {
  * Handle successful authentication (real Google or Mock)
  */
 async function handleSignInSuccess(token) {
-  showLoader();
+  const isMock = CONFIG.MOCK_MODE;
   LibraryAPI.setToken(token);
 
   let profileData = decodeJwt(token);
-  if (!profileData && CONFIG.MOCK_MODE) {
+  if (!profileData && isMock) {
     // In Mock Mode, decodeJwt will fail on custom tokens, so we create a mock profile
     const email = token.replace('mock-token-', '');
     profileData = { email: email, name: email.split('@')[0] };
@@ -216,53 +216,93 @@ async function handleSignInSuccess(token) {
     return;
   }
 
+  // SWR Cache handling
+  let hasCached = false;
+  const cachedProfile = isMock ? null : LibraryAPI.getCache('getUserProfile');
+
+  if (cachedProfile && cachedProfile.status !== 'not_registered') {
+    hasCached = true;
+    STATE.currentUser = cachedProfile.data;
+    if (profileData.email === 'chauhanchetan82@gmail.com') {
+      STATE.currentUser.role = 'Owner';
+      STATE.currentUser.status = 'Approved';
+    }
+    LibraryUI.renderNavbar(STATE.currentUser);
+    hideInitProgress();
+    hideLoader();
+
+    if (STATE.currentUser.status === 'Approved') {
+      loadGlobalStats(); // revalidate in background
+      handleViewChange('catalog'); // revalidate catalog in background
+    } else if (STATE.currentUser.status === 'Pending') {
+      LibraryUI.showPendingApprovalScreen(STATE.currentUser);
+    }
+  }
+
+  if (!hasCached) {
+    showLoader();
+  }
+
   try {
     const response = await LibraryAPI.request('getUserProfile');
     
-    // Deactivate any active tab views first
-    document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+    if (!isMock) {
+      LibraryAPI.setCache('getUserProfile', response);
+    }
 
-    if (response.status === 'not_registered') {
-      // User has authenticated but doesn't exist in database: render Registration Screen
-      LibraryUI.showRegistrationForm(profileData.email, profileData.name);
-      hideInitProgress();
-      hideLoader();
-    } else {
-      // User registered! Set state
-      STATE.currentUser = response.data;
-      if (profileData.email === 'chauhanchetan82@gmail.com') {
-        STATE.currentUser.role = 'Owner';
-        STATE.currentUser.status = 'Approved';
-      }
-      
-      // Update UI Header
-      LibraryUI.renderNavbar(STATE.currentUser);
+    // Determine if state changed
+    const isStateChanged = !hasCached || JSON.stringify(cachedProfile) !== JSON.stringify(response);
 
-      // Verify profile status
-      if (STATE.currentUser.status === 'Pending') {
-        LibraryUI.showPendingApprovalScreen(STATE.currentUser);
-        hideInitProgress();
-        hideLoader();
-      } else if (STATE.currentUser.status === 'Suspended') {
-        document.getElementById('main-content').innerHTML = `
-          <div class="glass-card" style="max-width: 480px; margin: 6rem auto; text-align: center; padding: 3rem;">
-            <h2 class="font-serif" style="color:var(--accent-rose); margin-bottom:1rem;">Account Suspended</h2>
-            <p style="color:var(--text-secondary);">Your library account has been suspended by the administrator.</p>
-          </div>
-        `;
+    if (isStateChanged) {
+      // Deactivate any active tab views first
+      document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+
+      if (response.status === 'not_registered') {
+        // User has authenticated but doesn't exist in database: render Registration Screen
+        LibraryUI.showRegistrationForm(profileData.email, profileData.name);
         hideInitProgress();
         hideLoader();
       } else {
-        // Approved user! Load data and show catalog
-        await loadGlobalStats();
-        handleViewChange('catalog');
+        // User registered! Set state
+        STATE.currentUser = response.data;
+        if (profileData.email === 'chauhanchetan82@gmail.com') {
+          STATE.currentUser.role = 'Owner';
+          STATE.currentUser.status = 'Approved';
+        }
+        
+        // Update UI Header
+        LibraryUI.renderNavbar(STATE.currentUser);
+
+        // Verify profile status
+        if (STATE.currentUser.status === 'Pending') {
+          LibraryUI.showPendingApprovalScreen(STATE.currentUser);
+          hideInitProgress();
+          hideLoader();
+        } else if (STATE.currentUser.status === 'Suspended') {
+          document.getElementById('main-content').innerHTML = `
+            <div class="glass-card" style="max-width: 480px; margin: 6rem auto; text-align: center; padding: 3rem;">
+              <h2 class="font-serif" style="color:var(--accent-rose); margin-bottom:1rem;">Account Suspended</h2>
+              <p style="color:var(--text-secondary);">Your library account has been suspended by the administrator.</p>
+            </div>
+          `;
+          hideInitProgress();
+          hideLoader();
+        } else {
+          // Approved user! Load data and show catalog
+          await loadGlobalStats();
+          handleViewChange('catalog');
+        }
       }
     }
   } catch (error) {
-    LibraryUI.showToast("Could not load user profile. Check console.", "error");
-    showWelcomeScreen();
-    hideInitProgress();
-    hideLoader();
+    if (!hasCached) {
+      LibraryUI.showToast("Could not load user profile. Check console.", "error");
+      showWelcomeScreen();
+      hideInitProgress();
+      hideLoader();
+    } else {
+      console.error("Revalidation of user profile failed:", error);
+    }
   }
 }
 
@@ -377,7 +417,6 @@ async function handleViewChange(view) {
     return;
   }
 
-  showLoader();
   STATE.activeView = view;
   LibraryUI.switchActiveTab(viewName);
 
@@ -402,51 +441,169 @@ async function handleViewChange(view) {
     // Hide all view templates
     document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
 
+    const isMock = CONFIG.MOCK_MODE;
+
     if (viewName === 'catalog') {
+      const cachedCatalog = isMock ? null : LibraryAPI.getCache('getCatalog');
+      if (cachedCatalog) {
+        STATE.books = cachedCatalog.data;
+        LibraryUI.renderCatalogView(STATE.books, STATE.currentUser);
+        document.getElementById('catalog-view').classList.add('active');
+        hideLoader();
+      } else {
+        showLoader();
+      }
+
       const response = await LibraryAPI.request('getCatalog');
-      STATE.books = response.data;
-      LibraryUI.renderCatalogView(STATE.books, STATE.currentUser);
-      document.getElementById('catalog-view').classList.add('active');
+      if (!isMock) {
+        LibraryAPI.setCache('getCatalog', response);
+      }
+
+      const isNew = !cachedCatalog || JSON.stringify(cachedCatalog.data) !== JSON.stringify(response.data);
+      if (isNew) {
+        STATE.books = response.data;
+        if (STATE.activeView === 'catalog') {
+          LibraryUI.renderCatalogView(STATE.books, STATE.currentUser);
+          document.getElementById('catalog-view').classList.add('active');
+        }
+      }
     } 
     
     else if (viewName === 'borrower') {
+      const cachedLoans = isMock ? null : LibraryAPI.getCache('getLoans');
+      if (cachedLoans) {
+        STATE.loans = cachedLoans.data;
+        LibraryUI.renderBorrowerDashboard(STATE.loans);
+        document.getElementById('borrower-view').classList.add('active');
+        hideLoader();
+      } else {
+        showLoader();
+      }
+
       const response = await LibraryAPI.request('getLoans');
-      STATE.loans = response.data;
-      LibraryUI.renderBorrowerDashboard(STATE.loans);
-      document.getElementById('borrower-view').classList.add('active');
+      if (!isMock) {
+        LibraryAPI.setCache('getLoans', response);
+      }
+
+      const isNew = !cachedLoans || JSON.stringify(cachedLoans.data) !== JSON.stringify(response.data);
+      if (isNew) {
+        STATE.loans = response.data;
+        if (STATE.activeView === 'borrower') {
+          LibraryUI.renderBorrowerDashboard(STATE.loans);
+          document.getElementById('borrower-view').classList.add('active');
+        }
+      }
     } 
     
     else if (viewName === 'lender') {
-      const response = await LibraryAPI.request('getLoans');
-      STATE.loans = response.data;
-      const catResponse = await LibraryAPI.request('getCatalog');
-      STATE.books = catResponse.data;
-      LibraryUI.renderLenderDashboard(STATE.loans, STATE.books, STATE.currentUser);
-      document.getElementById('lender-view').classList.add('active');
+      const cachedLoans = isMock ? null : LibraryAPI.getCache('getLoans');
+      const cachedCatalog = isMock ? null : LibraryAPI.getCache('getCatalog');
+
+      if (cachedLoans && cachedCatalog) {
+        STATE.loans = cachedLoans.data;
+        STATE.books = cachedCatalog.data;
+        LibraryUI.renderLenderDashboard(STATE.loans, STATE.books, STATE.currentUser);
+        document.getElementById('lender-view').classList.add('active');
+        hideLoader();
+      } else {
+        showLoader();
+      }
+
+      const [loansResponse, catResponse] = await Promise.all([
+        LibraryAPI.request('getLoans'),
+        LibraryAPI.request('getCatalog')
+      ]);
+
+      if (!isMock) {
+        LibraryAPI.setCache('getLoans', loansResponse);
+        LibraryAPI.setCache('getCatalog', catResponse);
+      }
+
+      const isLoansNew = !cachedLoans || JSON.stringify(cachedLoans.data) !== JSON.stringify(loansResponse.data);
+      const isCatalogNew = !cachedCatalog || JSON.stringify(cachedCatalog.data) !== JSON.stringify(catResponse.data);
+
+      if (isLoansNew || isCatalogNew) {
+        STATE.loans = loansResponse.data;
+        STATE.books = catResponse.data;
+        if (STATE.activeView === 'lender') {
+          LibraryUI.renderLenderDashboard(STATE.loans, STATE.books, STATE.currentUser);
+          document.getElementById('lender-view').classList.add('active');
+        }
+      }
     } 
     
     else if (viewName === 'admin') {
+      const cachedUsers = isMock ? null : LibraryAPI.getCache('adminGetUsers');
+      if (cachedUsers) {
+        STATE.users = cachedUsers.data;
+        LibraryUI.renderAdminDashboard(STATE.users, STATE.currentUser);
+        document.getElementById('admin-view').classList.add('active');
+        hideLoader();
+      } else {
+        showLoader();
+      }
+
       const response = await LibraryAPI.request('adminGetUsers');
-      STATE.users = response.data;
-      LibraryUI.renderAdminDashboard(STATE.users, STATE.currentUser);
-      document.getElementById('admin-view').classList.add('active');
+      if (!isMock) {
+        LibraryAPI.setCache('adminGetUsers', response);
+      }
+
+      const isNew = !cachedUsers || JSON.stringify(cachedUsers.data) !== JSON.stringify(response.data);
+      if (isNew) {
+        STATE.users = response.data;
+        if (STATE.activeView === 'admin') {
+          LibraryUI.renderAdminDashboard(STATE.users, STATE.currentUser);
+          document.getElementById('admin-view').classList.add('active');
+        }
+      }
     }
 
     else if (viewName === 'book-details') {
-      const catResponse = await LibraryAPI.request('getCatalog');
+      let book = STATE.books.find(b => b.book_id === bookId);
+      
+      if (book) {
+        LibraryUI.renderBookDetailsView(book, STATE.loans, STATE.currentUser);
+        document.getElementById('book-details-view').classList.add('active');
+        hideLoader();
+      } else {
+        const cachedCatalog = isMock ? null : LibraryAPI.getCache('getCatalog');
+        const cachedLoans = isMock ? null : LibraryAPI.getCache('getLoans');
+        if (cachedCatalog) {
+          STATE.books = cachedCatalog.data;
+          STATE.loans = cachedLoans ? cachedLoans.data : [];
+          book = STATE.books.find(b => b.book_id === bookId);
+        }
+        
+        if (book) {
+          LibraryUI.renderBookDetailsView(book, STATE.loans, STATE.currentUser);
+          document.getElementById('book-details-view').classList.add('active');
+          hideLoader();
+        } else {
+          showLoader();
+        }
+      }
+
+      const [catResponse, loansResponse] = await Promise.all([
+        LibraryAPI.request('getCatalog'),
+        LibraryAPI.request('getLoans').catch(() => ({ data: [] }))
+      ]);
+
+      if (!isMock) {
+        LibraryAPI.setCache('getCatalog', catResponse);
+        LibraryAPI.setCache('getLoans', loansResponse);
+      }
+
       STATE.books = catResponse.data;
-      const loansResponse = await LibraryAPI.request('getLoans').catch(() => ({ data: [] })); // fall back if not logged in
       STATE.loans = loansResponse.data || [];
       
-      const book = STATE.books.find(b => b.book_id === bookId);
-      if (!book) {
+      const freshBook = STATE.books.find(b => b.book_id === bookId);
+      if (freshBook && STATE.activeView === `book-details:${bookId}`) {
+        LibraryUI.renderBookDetailsView(freshBook, STATE.loans, STATE.currentUser);
+        document.getElementById('book-details-view').classList.add('active');
+      } else if (!freshBook && STATE.activeView === `book-details:${bookId}`) {
         LibraryUI.showToast("Book copy not found.", "error");
         handleViewChange('catalog');
-        return;
       }
-      
-      LibraryUI.renderBookDetailsView(book, STATE.loans, STATE.currentUser);
-      document.getElementById('book-details-view').classList.add('active');
     }
   } catch (error) {
     LibraryUI.showToast("Failed to fetch dashboard data.", "error");
@@ -463,6 +620,7 @@ async function handleUserAction(action, payload) {
   try {
     if (action === 'logout') {
       LibraryAPI.clearToken();
+      LibraryAPI.clearCache();
       showWelcomeScreen();
       LibraryUI.showToast("Logged out successfully");
       return;
@@ -588,14 +746,32 @@ async function handleUserAction(action, payload) {
  * Loads and renders the global library stats counters
  */
 async function loadGlobalStats() {
-  LibraryUI.renderStatsSkeleton();
+  const isMock = CONFIG.MOCK_MODE;
+  const cachedStats = isMock ? null : LibraryAPI.getCache('getStats');
+  
+  if (cachedStats) {
+    STATE.stats = cachedStats.data;
+    LibraryUI.renderStats(STATE.stats);
+    hideInitProgress();
+  } else {
+    LibraryUI.renderStatsSkeleton();
+  }
+
   try {
     const response = await LibraryAPI.request('getStats');
-    STATE.stats = response.data;
-    LibraryUI.renderStats(STATE.stats);
+    if (!isMock) {
+      LibraryAPI.setCache('getStats', response);
+    }
+    const isNew = !cachedStats || JSON.stringify(cachedStats.data) !== JSON.stringify(response.data);
+    if (isNew) {
+      STATE.stats = response.data;
+      LibraryUI.renderStats(STATE.stats);
+    }
   } catch (error) {
     console.error("Error loading stats:", error);
-    LibraryUI.renderStats({});
+    if (!cachedStats) {
+      LibraryUI.renderStats({});
+    }
   } finally {
     hideInitProgress();
   }
