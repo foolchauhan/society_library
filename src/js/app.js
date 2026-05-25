@@ -468,6 +468,7 @@ async function handleViewChange(view) {
         LibraryUI.renderCatalogView(STATE.books, STATE.currentUser);
         document.getElementById('catalog-view').classList.add('active');
         hideLoader();
+        showStaleBanner();
       } else {
         showLoader();
       }
@@ -485,6 +486,7 @@ async function handleViewChange(view) {
           document.getElementById('catalog-view').classList.add('active');
         }
       }
+      hideStaleBanner();
     } 
     
     else if (viewName === 'borrower') {
@@ -494,6 +496,7 @@ async function handleViewChange(view) {
         LibraryUI.renderBorrowerDashboard(STATE.loans);
         document.getElementById('borrower-view').classList.add('active');
         hideLoader();
+        showStaleBanner();
       } else {
         showLoader();
       }
@@ -511,6 +514,7 @@ async function handleViewChange(view) {
           document.getElementById('borrower-view').classList.add('active');
         }
       }
+      hideStaleBanner();
     } 
     
     else if (viewName === 'lender') {
@@ -523,6 +527,7 @@ async function handleViewChange(view) {
         LibraryUI.renderLenderDashboard(STATE.loans, STATE.books, STATE.currentUser);
         document.getElementById('lender-view').classList.add('active');
         hideLoader();
+        showStaleBanner();
       } else {
         showLoader();
       }
@@ -548,32 +553,49 @@ async function handleViewChange(view) {
           document.getElementById('lender-view').classList.add('active');
         }
       }
+      hideStaleBanner();
     } 
     
     else if (viewName === 'admin') {
       const cachedUsers = isMock ? null : LibraryAPI.getCache('adminGetUsers');
+      const cachedAutomation = isMock ? null : LibraryAPI.getCache('adminGetAutomationSettings');
+      const isOwner = STATE.currentUser && STATE.currentUser.role === 'Owner';
+
       if (cachedUsers) {
         STATE.users = cachedUsers.data;
-        LibraryUI.renderAdminDashboard(STATE.users, STATE.currentUser);
+        STATE.automation = cachedAutomation ? cachedAutomation.data : null;
+        LibraryUI.renderAdminDashboard(STATE.users, STATE.currentUser, STATE.automation);
         document.getElementById('admin-view').classList.add('active');
         hideLoader();
+        showStaleBanner();
       } else {
         showLoader();
       }
 
-      const response = await LibraryAPI.request('adminGetUsers');
-      if (!isMock) {
-        LibraryAPI.setCache('adminGetUsers', response);
+      const requests = [LibraryAPI.request('adminGetUsers')];
+      if (isOwner) {
+        requests.push(LibraryAPI.request('adminGetAutomationSettings').catch(() => ({ data: null })));
       }
 
-      const isNew = !cachedUsers || JSON.stringify(cachedUsers.data) !== JSON.stringify(response.data);
-      if (isNew) {
-        STATE.users = response.data;
-        if (STATE.activeView === 'admin') {
-          LibraryUI.renderAdminDashboard(STATE.users, STATE.currentUser);
-          document.getElementById('admin-view').classList.add('active');
+      const results = await Promise.all(requests);
+      const userResponse = results[0];
+      const autoResponse = results[1] || { data: null };
+
+      if (!isMock) {
+        LibraryAPI.setCache('adminGetUsers', userResponse);
+        if (isOwner && results[1]) {
+          LibraryAPI.setCache('adminGetAutomationSettings', autoResponse);
         }
       }
+
+      STATE.users = userResponse.data;
+      STATE.automation = autoResponse.data;
+
+      if (STATE.activeView === 'admin') {
+        LibraryUI.renderAdminDashboard(STATE.users, STATE.currentUser, STATE.automation);
+        document.getElementById('admin-view').classList.add('active');
+      }
+      hideStaleBanner();
     }
 
     else if (viewName === 'book-details') {
@@ -628,6 +650,7 @@ async function handleViewChange(view) {
     console.error(error);
   } finally {
     hideLoader();
+    hideStaleBanner();
   }
 }
 
@@ -802,6 +825,25 @@ function showLoader() {
 
 function hideLoader() {
   document.getElementById('loader').style.display = 'none';
+}
+
+let _staleBannerTimer = null;
+function showStaleBanner() {
+  const el = document.getElementById('stale-banner');
+  if (!el) return;
+  if (_staleBannerTimer) { clearTimeout(_staleBannerTimer); _staleBannerTimer = null; }
+  el.classList.remove('hiding');
+  el.style.display = 'block';
+}
+
+function hideStaleBanner() {
+  const el = document.getElementById('stale-banner');
+  if (!el || el.style.display === 'none') return;
+  el.classList.add('hiding');
+  _staleBannerTimer = setTimeout(() => {
+    el.style.display = 'none';
+    el.classList.remove('hiding');
+  }, 320);
 }
 
 function showInitProgress() {

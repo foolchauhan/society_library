@@ -762,6 +762,75 @@ class ApiClient {
         };
       }
 
+      case 'adminGetAutomationSettings': {
+        if (!currentMockUser) return { status: 'error', message: 'Not authenticated', code: 401 };
+        if (!isOwnerRole(currentProfile)) return { status: 'error', message: 'Owner permissions required' };
+        
+        const defaultTriggers = {
+          'dailyCheckOverdueLoans': { 'enabled': true, 'hour': 15 },
+          'dailyCheckLenderActions': { 'enabled': true, 'hour': 15 },
+          'dailyCheckPendingUserApprovals': { 'enabled': true, 'hour': 15 }
+        };
+        const defaultNotifications = {
+          'borrow_requests': true,
+          'return_actions': true,
+          'user_registrations': true,
+          'overdue_reminders': true
+        };
+
+        const triggers = JSON.parse(localStorage.getItem('lib_triggers') || JSON.stringify(defaultTriggers));
+        const notifications = JSON.parse(localStorage.getItem('lib_notifications') || JSON.stringify(defaultNotifications));
+        return { status: 'success', data: { triggers, notifications } };
+      }
+
+      case 'adminUpdateAutomationSettings': {
+        if (!currentMockUser) return { status: 'error', message: 'Not authenticated', code: 401 };
+        if (!isOwnerRole(currentProfile)) return { status: 'error', message: 'Owner permissions required' };
+
+        const defaultTriggers = {
+          'dailyCheckOverdueLoans': { 'enabled': true, 'hour': 15 },
+          'dailyCheckLenderActions': { 'enabled': true, 'hour': 15 },
+          'dailyCheckPendingUserApprovals': { 'enabled': true, 'hour': 15 }
+        };
+        const defaultNotifications = {
+          'borrow_requests': true,
+          'return_actions': true,
+          'user_registrations': true,
+          'overdue_reminders': true
+        };
+
+        const triggers = JSON.parse(localStorage.getItem('lib_triggers') || JSON.stringify(defaultTriggers));
+        const notifications = JSON.parse(localStorage.getItem('lib_notifications') || JSON.stringify(defaultNotifications));
+        
+        if (payload.triggers) {
+          Object.keys(payload.triggers).forEach(key => {
+            if (triggers[key]) {
+              if (payload.triggers[key].enabled !== undefined) triggers[key].enabled = !!payload.triggers[key].enabled;
+              if (payload.triggers[key].hour !== undefined) triggers[key].hour = parseInt(payload.triggers[key].hour, 10);
+            }
+          });
+          localStorage.setItem('lib_triggers', JSON.stringify(triggers));
+        }
+
+        if (payload.notifications) {
+          Object.keys(payload.notifications).forEach(key => {
+            if (notifications[key] !== undefined) {
+              notifications[key] = !!payload.notifications[key];
+            }
+          });
+          localStorage.setItem('lib_notifications', JSON.stringify(notifications));
+        }
+
+        return { status: 'success', data: { triggers, notifications } };
+      }
+
+      case 'adminTriggerNotification': {
+        if (!currentMockUser) return { status: 'error', message: 'Not authenticated', code: 401 };
+        if (!isOwnerRole(currentProfile)) return { status: 'error', message: 'Owner permissions required' };
+        console.log(`[MOCK NOTIFICATION TRIGGERED] Manually triggered checker: ${payload.notificationType}`);
+        return { status: 'success', message: `Trigger executed successfully inside mock system!` };
+      }
+
       default:
         return { status: 'error', message: 'Unknown mock action: ' + action };
     }

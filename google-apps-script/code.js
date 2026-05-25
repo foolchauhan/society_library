@@ -164,6 +164,10 @@ function doPost(e) {
         return deleteBook(payload, verifiedUser);
       case 'adminEditUser':
         return adminEditUser(payload, verifiedUser);
+      case 'adminGetTriggers':
+        return adminGetTriggers(payload, verifiedUser);
+      case 'adminUpdateTrigger':
+        return adminUpdateTrigger(payload, verifiedUser);
       case 'getStats':
         return getStats(payload, verifiedUser);
       default:
@@ -1126,10 +1130,52 @@ function respondError(message, code) {
   return respond({ status: 'error', message: message, code: code || 400 });
 }
 
+// Helper to check if a specific notification category is enabled in settings
+function isNotificationEnabled(category) {
+  if (!category) return true;
+  try {
+    const configStr = PropertiesService.getScriptProperties().getProperty('NOTIFICATION_CONFIG');
+    const config = configStr ? JSON.parse(configStr) : {
+      'borrow_requests': true,
+      'return_actions': true,
+      'user_registrations': true,
+      'overdue_reminders': true
+    };
+    return config[category] !== false;
+  } catch (err) {
+    return true;
+  }
+}
+
+// Fallback logic to detect the email notification category based on subject keywords
+function detectCategory(subject, category) {
+  if (category) return category;
+  if (!subject) return 'other';
+  const sub = subject.toLowerCase();
+  if (sub.includes('approved') || sub.includes('registration') || sub.includes('account')) {
+    return 'user_registrations';
+  }
+  if (sub.includes('borrow request') || sub.includes('requested') || sub.includes('borrow')) {
+    return 'borrow_requests';
+  }
+  if (sub.includes('return confirmation') || sub.includes('returned') || sub.includes('receipt') || sub.includes('confirm book return')) {
+    return 'return_actions';
+  }
+  if (sub.includes('overdue') || sub.includes('reminder') || sub.includes('late')) {
+    return 'overdue_reminders';
+  }
+  return 'other';
+}
+
 // Helper to send email notifications safely
-function sendEmailNotification(to, subject, body, htmlBody) {
+function sendEmailNotification(to, subject, body, htmlBody, category) {
   try {
     if (!to) return;
+    const cat = detectCategory(subject, category);
+    if (!isNotificationEnabled(cat)) {
+      Logger.log(`Email notification skipped: category '${cat}' is disabled.`);
+      return;
+    }
     const options = {};
     if (htmlBody) {
       options.htmlBody = htmlBody;
@@ -1557,10 +1603,19 @@ function dailyCheckPendingUserApprovals() {
 }
 
 /**
- * Programmatically creates all daily triggers to run the check scripts daily at 3 PM
+ * Programmatically creates all daily triggers to run the check scripts daily at their configured hour
  */
 function createTimeDrivenTriggers() {
   try {
+    const defaultTriggers = {
+      'dailyCheckOverdueLoans': { 'enabled': true, 'hour': 15 },
+      'dailyCheckLenderActions': { 'enabled': true, 'hour': 15 },
+      'dailyCheckPendingUserApprovals': { 'enabled': true, 'hour': 15 }
+    };
+    
+    const configStr = PropertiesService.getScriptProperties().getProperty('TRIGGER_CONFIG');
+    const config = configStr ? JSON.parse(configStr) : defaultTriggers;
+
     const handlers = [
       'dailyCheckOverdueLoans',
       'dailyCheckLenderActions',
@@ -1574,16 +1629,138 @@ function createTimeDrivenTriggers() {
       }
     }
     
-    // Set daily triggers to fire every day at 3 PM (15:00 hours)
     handlers.forEach(handler => {
-      ScriptApp.newTrigger(handler)
-        .timeBased()
-        .everyDays(1)
-        .atHour(15) // 3 PM (IST if project timezone is set to Kolkata)
-        .create();
-      Logger.log(`Daily trigger for '${handler}' successfully registered at 3 PM.`);
+      const triggerCfg = config[handler] || defaultTriggers[handler];
+      if (triggerCfg && triggerCfg.enabled) {
+        ScriptApp.newTrigger(handler)
+          .timeBased()
+          .everyDays(1)
+          .atHour(triggerCfg.hour)
+          .create();
+        Logger.log(`Daily trigger for '${handler}' successfully registered at ${triggerCfg.hour}:00.`);
+      } else {
+        Logger.log(`Daily trigger for '${handler}' is disabled.`);
+      }
     });
   } catch (err) {
     Logger.log("Failed to register time-driven triggers: " + err.toString());
+  }
+}
+
+/**
+ * Endpoint to retrieve current time-based trigger and notification categories configuration
+ */
+function adminGetAutomationSettings(payload, user) {
+  if (!user) return respondError('Authentication required');
+  const profile = findRowByEmail(TABS.USERS, user.email);
+  if (!profile || profile.role !== 'Owner') {
+    return respondError('Owner permissions required');
+  }
+
+  const defaultTriggers = {
+    'dailyCheckOverdueLoans': { 'enabled': true, 'hour': 15 },
+    'dailyCheckLenderActions': { 'enabled': true, 'hour': 15 },
+    'dailyCheckPendingUserApprovals': { 'enabled': true, 'hour': 15 }
+  };
+  const defaultNotifications = {
+    'borrow_requests': true,
+    'return_actions': true,
+    'user_registrations': true,
+    'overdue_reminders': true
+  };
+
+  const triggersStr = PropertiesService.getScriptProperties().getProperty('TRIGGER_CONFIG');
+  const notificationsStr = PropertiesService.getScriptProperties().getProperty('NOTIFICATION_CONFIG');
+
+  const triggers = triggersStr ? JSON.parse(triggersStr) : defaultTriggers;
+  const notifications = notificationsStr ? JSON.parse(notificationsStr) : defaultNotifications;
+
+  return respond({
+    status: 'success',
+    data: {
+      triggers: triggers,
+      notifications: notifications
+    }
+  });
+}
+
+/**
+ * Endpoint to modify current time-based triggers and email notification categories
+ */
+function adminUpdateAutomationSettings(payload, user) {
+  if (!user) return respondError('Authentication required');
+  const profile = findRowByEmail(TABS.USERS, user.email);
+  if (!profile || profile.role !== 'Owner') {
+    return respondError('Owner permissions required');
+  }
+
+  const defaultTriggers = {
+    'dailyCheckOverdueLoans': { 'enabled': true, 'hour': 15 },
+    'dailyCheckLenderActions': { 'enabled': true, 'hour': 15 },
+    'dailyCheckPendingUserApprovals': { 'enabled': true, 'hour': 15 }
+  };
+  const defaultNotifications = {
+    'borrow_requests': true,
+    'return_actions': true,
+    'user_registrations': true,
+    'overdue_reminders': true
+  };
+
+  if (payload.triggers) {
+    const currentTriggersStr = PropertiesService.getScriptProperties().getProperty('TRIGGER_CONFIG');
+    const currentTriggers = currentTriggersStr ? JSON.parse(currentTriggersStr) : defaultTriggers;
+    
+    // Merge updates
+    Object.keys(payload.triggers).forEach(key => {
+      if (currentTriggers[key]) {
+        if (payload.triggers[key].enabled !== undefined) currentTriggers[key].enabled = !!payload.triggers[key].enabled;
+        if (payload.triggers[key].hour !== undefined) currentTriggers[key].hour = parseInt(payload.triggers[key].hour, 10);
+      }
+    });
+
+    PropertiesService.getScriptProperties().setProperty('TRIGGER_CONFIG', JSON.stringify(currentTriggers));
+    // Recreate triggers based on new settings
+    createTimeDrivenTriggers();
+  }
+
+  if (payload.notifications) {
+    const currentNotificationsStr = PropertiesService.getScriptProperties().getProperty('NOTIFICATION_CONFIG');
+    const currentNotifications = currentNotificationsStr ? JSON.parse(currentNotificationsStr) : defaultNotifications;
+
+    // Merge updates
+    Object.keys(payload.notifications).forEach(key => {
+      if (currentNotifications[key] !== undefined) {
+        currentNotifications[key] = !!payload.notifications[key];
+      }
+    });
+
+    PropertiesService.getScriptProperties().setProperty('NOTIFICATION_CONFIG', JSON.stringify(currentNotifications));
+  }
+
+  return adminGetAutomationSettings(payload, user);
+}
+
+/**
+ * Endpoint to trigger automated checks manually (on demand)
+ */
+function adminTriggerNotification(payload, user) {
+  if (!user) return respondError('Authentication required');
+  const profile = findRowByEmail(TABS.USERS, user.email);
+  if (!profile || profile.role !== 'Owner') {
+    return respondError('Owner permissions required');
+  }
+
+  const type = payload.notificationType;
+  if (type === 'overdue_loans') {
+    dailyCheckOverdueLoans();
+    return respond({ status: 'success', message: 'Daily overdue loans check triggered successfully!' });
+  } else if (type === 'lender_actions') {
+    dailyCheckLenderActions();
+    return respond({ status: 'success', message: 'Daily lender actions digest triggered successfully!' });
+  } else if (type === 'user_approvals') {
+    dailyCheckPendingUserApprovals();
+    return respond({ status: 'success', message: 'Pending user approvals alert triggered successfully!' });
+  } else {
+    return respondError('Unknown notification type: ' + type);
   }
 }

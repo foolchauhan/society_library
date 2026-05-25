@@ -2077,3 +2077,66 @@ footer {
   letter-spacing: 0.25px;
 }
 
+/* ============================================
+   Stale Data Sync Banner
+   ============================================ */
+.stale-banner {
+  position: fixed;
+  bottom: 1.25rem;
+  left: 50%;
+  transform: translateX(-50%) translateY(0);
+  z-index: 9000;
+  pointer-events: none;
+  animation: stale-banner-in 0.35s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.stale-banner.hiding {
+  animation: stale-banner-out 0.3s cubic-bezier(0.55, 0, 1, 0.45) both;
+}
+
+@keyframes stale-banner-in {
+  from { opacity: 0; transform: translateX(-50%) translateY(1.5rem); }
+  to   { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+
+@keyframes stale-banner-out {
+  from { opacity: 1; transform: translateX(-50%) translateY(0); }
+  to   { opacity: 0; transform: translateX(-50%) translateY(1.5rem); }
+}
+
+.stale-banner-inner {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.55rem 1.1rem;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  border-radius: 2rem;
+  box-shadow: var(--shadow-md), 0 0 0 1px rgba(0,0,0,0.04);
+  backdrop-filter: var(--backdrop-blur);
+  -webkit-backdrop-filter: var(--backdrop-blur);
+  white-space: nowrap;
+}
+
+.stale-banner-dot {
+  display: inline-block;
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 50%;
+  background: var(--accent-gold);
+  animation: stale-dot-pulse 1.4s ease-in-out infinite;
+  flex-shrink: 0;
+}
+
+@keyframes stale-dot-pulse {
+  0%, 100% { opacity: 1;   transform: scale(1);    box-shadow: 0 0 0 0 var(--accent-gold-glow); }
+  50%       { opacity: 0.7; transform: scale(0.85); box-shadow: 0 0 0 5px transparent; }
+}
+
+.stale-banner-text {
+  font-family: var(--font-body);
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+  letter-spacing: 0.01em;
+}
