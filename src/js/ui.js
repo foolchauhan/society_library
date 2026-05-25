@@ -615,6 +615,12 @@ class UiService {
     if (view) {
       document.querySelectorAll(`[data-view="${view}"]`).forEach(l => l.classList.add('active'));
     }
+
+    // Hide the bottom + add button on the Lending Desk (it lives in the Catalog header there)
+    const bottomAddBtn = document.getElementById('bottom-nav-add-btn');
+    if (bottomAddBtn) {
+      bottomAddBtn.style.display = (view === 'lender') ? 'none' : '';
+    }
   }
 
   renderStatsSkeleton() {
@@ -1225,8 +1231,8 @@ class UiService {
           statusBadge = `<span class="book-badge badge-requested">Requested</span>`;
           actionButton = `<button class="btn btn-secondary btn-sm" disabled>Awaiting Approval</button>`;
         } else if (loan.status === 'Approved') {
-          statusBadge = `<span class="book-badge badge-available">Approved</span>`;
-          actionButton = `<button class="btn btn-warning btn-sm" style="width:100%; pointer-events:none;">Collect from Flat ${loan.lender_flat}</button>`;
+          statusBadge = `<span class="book-badge badge-available">Approved &#8212; Collect from Flat ${loan.lender_flat}</span>`;
+          actionButton = `<button class="btn btn-warning btn-sm btn-borrower-handover-confirm" data-loan-id="${loan.loan_id}" style="width:100%;">&#10003; Confirm I Received the Book</button>`;
           if (loan.lender_phone) {
             contactHtml += `<div class="detail-item"><span class="detail-label">Phone</span><span class="detail-value">${loan.lender_phone}</span></div>`;
           }
@@ -1364,6 +1370,21 @@ class UiService {
           "This will notify the lender that you have returned the book. They will need to confirm receipt.",
           () => {
             if (this.onActionCallback) this.onActionCallback('borrower_return_request', { loanId });
+          }
+        );
+      });
+    });
+
+    // Bind borrower-side handover confirm buttons (borrower confirms they physically received the book)
+    view.querySelectorAll('.btn-borrower-handover-confirm').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const loanId = btn.getAttribute('data-loan-id');
+        this.showConfirmDialog(
+          "Confirm Book Receipt?",
+          "Confirm that you have physically collected the book from the lender. This will mark the loan as active.",
+          () => {
+            if (this.onActionCallback) this.onActionCallback('handover_loan', { loanId });
           }
         );
       });
@@ -1595,9 +1616,6 @@ class UiService {
       <div class="dashboard-section">
         <div class="section-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
           <h2 class="section-title font-serif" style="margin: 0;">Lending Desk</h2>
-          ${currentUser && currentUser.status === 'Approved' && (currentUser.role === 'Lender' || currentUser.role === 'Both' || currentUser.role === 'Admin' || currentUser.role === 'Owner') ? `
-            <button class="btn btn-primary" id="btn-lending-add-book">${ICONS.plus} Lend a Book</button>
-          ` : ''}
         </div>
 
         <!-- My Books Section -->
@@ -1878,9 +1896,15 @@ class UiService {
         </div>
         ` : ''}
 
-      ${isOwnerUser && automation ? (() => {
-        const trig = automation.triggers || {};
-        const notif = automation.notifications || {};
+      ${isOwnerUser ? (() => {
+        const defaultTrig = {
+          dailyCheckOverdueLoans:          { enabled: true, hour: 15 },
+          dailyCheckLenderActions:          { enabled: true, hour: 15 },
+          dailyCheckPendingUserApprovals:   { enabled: true, hour: 15 }
+        };
+        const defaultNotif = { borrow_requests: true, return_actions: true, user_registrations: true, overdue_reminders: true };
+        const trig = (automation && automation.triggers)       || defaultTrig;
+        const notif = (automation && automation.notifications) || defaultNotif;
 
         const hourLabel = h => {
           if (h === 0) return '12 AM';
@@ -1889,15 +1913,14 @@ class UiService {
           return `${h - 12} PM`;
         };
 
-        const hourOptions = Array.from({length: 24}, (_, i) =>
-          `<option value="${i}" ${(trig[arguments[0]] && trig[arguments[0]].hour === i) ? 'selected' : ''}>${hourLabel(i)}</option>`
-        );
-
         const triggerRow = (key, label, icon) => {
           const cfg = trig[key] || { enabled: true, hour: 15 };
           const opts = Array.from({length: 24}, (_, i) =>
             `<option value="${i}" ${cfg.hour === i ? 'selected' : ''}>${hourLabel(i)}</option>`
           ).join('');
+          const notifType = key === 'dailyCheckOverdueLoans' ? 'overdue_loans'
+                          : key === 'dailyCheckLenderActions' ? 'lender_actions'
+                          : 'user_approvals';
           return `
             <div class="automation-row" data-trigger-key="${key}">
               <div class="automation-row-info">
@@ -1915,7 +1938,7 @@ class UiService {
                   <input type="checkbox" class="automation-trigger-toggle" data-trigger-key="${key}" ${cfg.enabled ? 'checked' : ''}>
                   <span class="slider-switch"></span>
                 </label>
-                <button class="btn btn-secondary btn-sm btn-trigger-now" data-notification-type="${key === 'dailyCheckOverdueLoans' ? 'overdue_loans' : key === 'dailyCheckLenderActions' ? 'lender_actions' : 'user_approvals'}" style="font-size:0.75rem; white-space:nowrap;">▶ Run Now</button>
+                <button class="btn btn-secondary btn-sm btn-trigger-now" data-notification-type="${notifType}" style="font-size:0.75rem; white-space:nowrap;">&#9654; Run Now</button>
               </div>
             </div>
           `;
@@ -1944,7 +1967,7 @@ class UiService {
         return `
           <div class="automation-panel glass-card" style="margin-top:2rem;">
             <div class="automation-panel-header">
-              <span style="font-size:1.3rem;">⚙️</span>
+              <span style="font-size:1.3rem;">&#9881;&#65039;</span>
               <div>
                 <h3 class="font-serif" style="margin:0; font-size:1.05rem; color:var(--text-primary);">Automation &amp; Email Notifications</h3>
                 <p style="margin:0; font-size:0.78rem; color:var(--text-muted); margin-top:0.2rem;">Manage scheduled daily triggers and email category preferences</p>
@@ -1952,18 +1975,18 @@ class UiService {
             </div>
 
             <div class="automation-section">
-              <div class="automation-section-title">📅 Daily Scheduled Triggers</div>
-              ${triggerRow('dailyCheckOverdueLoans',      '⚠️ Overdue Loan Reminders',          '📚')}
-              ${triggerRow('dailyCheckLenderActions',     '🔔 Lender Actions Digest',             '📋')}
-              ${triggerRow('dailyCheckPendingUserApprovals', '👤 Pending User Approvals Alert',   '🛡️')}
+              <div class="automation-section-title">&#128197; Daily Scheduled Triggers</div>
+              ${triggerRow('dailyCheckOverdueLoans',         '&#9888;&#65039; Overdue Loan Reminders',     '&#128218;')}
+              ${triggerRow('dailyCheckLenderActions',        '&#128276; Lender Actions Digest',            '&#128203;')}
+              ${triggerRow('dailyCheckPendingUserApprovals', '&#128100; Pending User Approvals Alert',     '&#128737;&#65039;')}
             </div>
 
             <div class="automation-section" style="margin-top:1.5rem;">
-              <div class="automation-section-title">✉️ Email Notification Categories</div>
-              ${notifRow('borrow_requests',   'Borrow Requests &amp; Approvals',       '📖')}
-              ${notifRow('return_actions',    'Return Confirmations &amp; Receipts',   '↩️')}
-              ${notifRow('user_registrations','User Registrations &amp; Approvals',    '🆕')}
-              ${notifRow('overdue_reminders', 'Daily Overdue Alerts',                  '⏰')}
+              <div class="automation-section-title">&#9993;&#65039; Email Notification Categories</div>
+              ${notifRow('borrow_requests',    'Borrow Requests &amp; Approvals',      '&#128214;')}
+              ${notifRow('return_actions',     'Return Confirmations &amp; Receipts',  '&#8617;&#65039;')}
+              ${notifRow('user_registrations', 'User Registrations &amp; Approvals',   '&#128338;')}
+              ${notifRow('overdue_reminders',  'Daily Overdue Alerts',                 '&#128336;')}
             </div>
           </div>
         `;
