@@ -1185,6 +1185,17 @@ class UiService {
       });
     });
 
+    // Bind click to open details page when clicking anywhere on the card or list row (except buttons/links)
+    grid.querySelectorAll('.book-card, .book-list-row').forEach(el => {
+      el.style.cursor = 'pointer'; // Ensure pointer cursor is shown
+      el.addEventListener('click', (e) => {
+        if (e.target.closest('button') || e.target.closest('a')) return;
+        const bookId = el.getAttribute('data-book-id');
+        if (bookId && this.onViewChangeCallback) {
+          this.onViewChangeCallback(`book-details:${bookId}`);
+        }
+      });
+    });
   }
 
   /**
@@ -1193,7 +1204,7 @@ class UiService {
   renderBorrowerDashboard(loans) {
     const view = document.getElementById('borrower-view');
     
-    const activeLoans = loans.filter(l => l.status === 'Requested' || l.status === 'Approved' || l.status === 'Out');
+    const activeLoans = loans.filter(l => l.status === 'Requested' || l.status === 'Approved' || l.status === 'Out' || l.status === 'ReturnPending');
     const pastLoans = loans.filter(l => l.status === 'Returned' || l.status === 'Rejected');
 
     let activeLoansHtml = '';
@@ -1221,7 +1232,7 @@ class UiService {
           }
         } else if (loan.status === 'Out') {
           statusBadge = `<span class="book-badge badge-borrowed">Borrowed</span>`;
-          actionButton = `<button class="btn btn-secondary btn-sm" disabled>Out on Loan</button>`;
+          actionButton = `<button class="btn btn-primary btn-sm btn-mark-returned" data-loan-id="${loan.loan_id}">Return Book</button>`;
           
           // Calculate due progress
           const start = new Date(loan.handover_date).getTime();
@@ -1249,10 +1260,13 @@ class UiService {
               </div>
             </div>
           `;
+        } else if (loan.status === 'ReturnPending') {
+          statusBadge = `<span class="book-badge badge-requested">Return Pending</span>`;
+          actionButton = `<button class="btn btn-secondary btn-sm" disabled>Awaiting Confirm</button>`;
         }
 
         return `
-          <div class="glass-card" style="display: flex; gap: 1.25rem; align-items: flex-start; margin-bottom: 1rem; position: relative;">
+          <div class="glass-card clickable-loan-card" data-book-id="${loan.book_id}" style="display: flex; gap: 1.25rem; align-items: flex-start; margin-bottom: 1rem; position: relative; cursor: pointer;">
             <div style="width: 70px; aspect-ratio: 2/3; border-radius: var(--radius-sm); overflow:hidden; border: 1px solid var(--border-color); flex-shrink: 0; background: #1e293b;">
               ${loan.book_cover ? `<img src="${loan.book_cover}" style="width:100%; height:100%; object-fit:cover;">` : `<div style="display:flex; align-items:center; justify-content:center; height:100%; color: var(--text-muted);">${ICONS.book}</div>`}
             </div>
@@ -1275,7 +1289,7 @@ class UiService {
               </div>
               ${progressHtml}
             </div>
-            <div style="align-self: center; margin-left: auto;">
+            <div style="align-self: center; margin-left: auto; z-index: 5;">
               ${actionButton}
             </div>
           </div>
@@ -1301,7 +1315,7 @@ class UiService {
             </thead>
             <tbody>
               ${pastLoans.map(loan => `
-                <tr>
+                <tr class="clickable-row" data-book-id="${loan.book_id}" style="cursor: pointer;">
                   <td>
                     <div style="font-weight:600; color: var(--text-primary);">${loan.book_title}</div>
                     <div style="font-size:0.75rem; color: var(--text-muted);">${loan.book_author}</div>
@@ -1340,7 +1354,31 @@ class UiService {
       </div>
     `;
 
-    // No return triggers bound here as only lenders can return books
+    // Bind return request buttons
+    view.querySelectorAll('.btn-mark-returned').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const loanId = btn.getAttribute('data-loan-id');
+        this.showConfirmDialog(
+          "Mark Book as Returned?",
+          "This will notify the lender that you have returned the book. They will need to confirm receipt.",
+          () => {
+            if (this.onActionCallback) this.onActionCallback('borrower_return_request', { loanId });
+          }
+        );
+      });
+    });
+
+    // Bind click to open details page
+    view.querySelectorAll('.clickable-loan-card, .clickable-row').forEach(el => {
+      el.addEventListener('click', (e) => {
+        if (e.target.closest('button') || e.target.closest('a')) return;
+        const bookId = el.getAttribute('data-book-id');
+        if (bookId && this.onViewChangeCallback) {
+          this.onViewChangeCallback(`book-details:${bookId}`);
+        }
+      });
+    });
   }
 
   /**
@@ -1355,7 +1393,7 @@ class UiService {
     // Group loans by operations needed
     const requests = loans.filter(l => l.status === 'Requested');
     const handovers = loans.filter(l => l.status === 'Approved');
-    const activeReturns = loans.filter(l => l.status === 'Out');
+    const activeReturns = loans.filter(l => l.status === 'Out' || l.status === 'ReturnPending');
     const history = loans.filter(l => l.status === 'Returned' || l.status === 'Rejected');
 
     // Filter books owned by the current user
@@ -1420,7 +1458,7 @@ class UiService {
         const loanBook = books.find(b => b.book_id === loan.book_id);
         const canEditBook = loanBook && (loanBook.owner_email === (currentUser && currentUser.email) || (currentUser && currentUser.role === 'Owner'));
         return `
-          <div class="glass-card" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
+          <div class="glass-card clickable-loan-card" data-book-id="${loan.book_id}" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem; cursor: pointer;">
             <div>
               <div style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
                 <h4 style="font-size: 0.95rem; font-family: var(--font-title); margin: 0;">${loan.book_title}</h4>
@@ -1433,7 +1471,7 @@ class UiService {
               <div style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 0.25rem;">Requested by: <strong>${loan.borrower_name}</strong> (Flat ${loan.borrower_flat})</div>
               <div style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.25rem;">Duration: ${loan.duration_days} days | Note: "${loan.notes || 'None'}"</div>
             </div>
-            <div style="display:flex; gap: 0.5rem;">
+            <div style="display:flex; gap: 0.5rem; z-index: 5;">
               <button class="btn btn-primary btn-sm btn-approve-loan" data-loan-id="${loan.loan_id}">${ICONS.check} Approve</button>
               <button class="btn btn-secondary btn-sm btn-reject-loan" data-loan-id="${loan.loan_id}">${ICONS.x} Reject</button>
             </div>
@@ -1451,7 +1489,7 @@ class UiService {
         const loanBook = books.find(b => b.book_id === loan.book_id);
         const canEditBook = loanBook && (loanBook.owner_email === (currentUser && currentUser.email) || (currentUser && currentUser.role === 'Owner'));
         return `
-          <div class="glass-card" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
+          <div class="glass-card clickable-loan-card" data-book-id="${loan.book_id}" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem; cursor: pointer;">
             <div>
               <div style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
                 <h4 style="font-size: 0.95rem; font-family: var(--font-title); margin: 0;">${loan.book_title}</h4>
@@ -1464,7 +1502,7 @@ class UiService {
               <div style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 0.25rem;">Approved for: <strong>${loan.borrower_name}</strong> (Flat ${loan.borrower_flat})</div>
               <div style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.25rem;">Phone: ${loan.borrower_phone || 'N/A'}</div>
             </div>
-            <div>
+            <div style="z-index: 5;">
               <button class="btn btn-warning btn-sm btn-handover-confirm" data-loan-id="${loan.loan_id}">Confirm Handover</button>
             </div>
           </div>
@@ -1484,9 +1522,10 @@ class UiService {
         const dueText = daysLeft < 0 ? `Overdue by ${Math.abs(daysLeft)} days!` : `Due in ${daysLeft} days`;
         const loanBook = books.find(b => b.book_id === loan.book_id);
         const canEditBook = loanBook && (loanBook.owner_email === (currentUser && currentUser.email) || (currentUser && currentUser.role === 'Owner'));
+        const isPendingReturn = loan.status === 'ReturnPending';
 
         return `
-          <div class="glass-card" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem; border-color: var(--border-color);">
+          <div class="glass-card clickable-loan-card" data-book-id="${loan.book_id}" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem; border-color: var(--border-color); cursor: pointer;">
             <div>
               <div style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
                 <h4 style="font-size: 0.95rem; font-family: var(--font-title); margin: 0;">${loan.book_title}</h4>
@@ -1501,8 +1540,14 @@ class UiService {
                 ${dueText} (Due: ${new Date(loan.due_date).toLocaleDateString()})
               </div>
             </div>
-            <div>
-              <button class="btn btn-primary btn-sm btn-return-confirm" data-loan-id="${loan.loan_id}">Mark as Returned</button>
+            <div style="display: flex; gap: 0.5rem; align-items: center; z-index: 5;">
+              ${isPendingReturn ? `
+                <span class="book-badge badge-requested" style="position:static; margin-right:0.25rem;">Return Pending</span>
+                <button class="btn btn-primary btn-sm btn-return-confirm" data-loan-id="${loan.loan_id}" style="background: var(--accent-emerald); border-color: var(--accent-emerald); color: #fff;">Confirm Return</button>
+              ` : `
+                <button class="btn btn-secondary btn-sm btn-send-reminder" data-loan-id="${loan.loan_id}" style="display:flex; align-items:center; gap:4px;">${ICONS.bell || ''} Send Reminder</button>
+                <button class="btn btn-primary btn-sm btn-return-confirm" data-loan-id="${loan.loan_id}">Mark as Returned</button>
+              `}
             </div>
           </div>
         `;
@@ -1602,36 +1647,50 @@ class UiService {
     }
 
     view.querySelectorAll('.btn-approve-loan').forEach(btn => {
-      btn.addEventListener('click', () => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
         const loanId = btn.getAttribute('data-loan-id');
         if (this.onActionCallback) this.onActionCallback('approve_loan', { loanId });
       });
     });
 
     view.querySelectorAll('.btn-reject-loan').forEach(btn => {
-      btn.addEventListener('click', () => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
         const loanId = btn.getAttribute('data-loan-id');
         if (this.onActionCallback) this.onActionCallback('reject_loan', { loanId });
       });
     });
 
     view.querySelectorAll('.btn-handover-confirm').forEach(btn => {
-      btn.addEventListener('click', () => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
         const loanId = btn.getAttribute('data-loan-id');
         if (this.onActionCallback) this.onActionCallback('handover_loan', { loanId });
       });
     });
 
     view.querySelectorAll('.btn-return-confirm').forEach(btn => {
-      btn.addEventListener('click', () => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
         const loanId = btn.getAttribute('data-loan-id');
         if (this.onActionCallback) this.onActionCallback('return_confirm', { loanId });
       });
     });
 
+    view.querySelectorAll('.btn-send-reminder').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const loanId = btn.getAttribute('data-loan-id');
+        const loan = loans.find(l => l.loan_id === loanId);
+        if (loan) this.showReturnReminderModal(loan);
+      });
+    });
+
     // Bind inline Edit Book buttons on loan cards
     view.querySelectorAll('.btn-edit-loan-book').forEach(btn => {
-      btn.addEventListener('click', () => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
         const bookId = btn.getAttribute('data-book-id');
         const book = books.find(b => b.book_id === bookId);
         if (book) {
@@ -1651,7 +1710,8 @@ class UiService {
 
     // Bind owned books edit/toggle/delete on lending desk
     view.querySelectorAll('.btn-owner-edit').forEach(btn => {
-      btn.addEventListener('click', () => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
         const bookId = btn.getAttribute('data-id');
         const book = books.find(b => b.book_id === bookId);
         if (book) this.showOwnerEditBookModal(book, currentUser);
@@ -1659,14 +1719,16 @@ class UiService {
     });
 
     view.querySelectorAll('.btn-owner-toggle').forEach(btn => {
-      btn.addEventListener('click', () => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
         const bookId = btn.getAttribute('data-id');
         if (this.onActionCallback) this.onActionCallback('toggle_book_availability', { bookId });
       });
     });
 
     view.querySelectorAll('.btn-owner-delete').forEach(btn => {
-      btn.addEventListener('click', () => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
         const bookId = btn.getAttribute('data-id');
         const book = books.find(b => b.book_id === bookId);
         if (!book) return;
@@ -1677,6 +1739,17 @@ class UiService {
             if (this.onActionCallback) this.onActionCallback('delete_book', { bookId });
           }
         );
+      });
+    });
+
+    // Bind click to open details page
+    view.querySelectorAll('.book-card, .clickable-loan-card, .clickable-row').forEach(el => {
+      el.addEventListener('click', (e) => {
+        if (e.target.closest('button') || e.target.closest('a')) return;
+        const bookId = el.getAttribute('data-book-id');
+        if (bookId && this.onViewChangeCallback) {
+          this.onViewChangeCallback(`book-details:${bookId}`);
+        }
       });
     });
   }
@@ -3372,6 +3445,412 @@ class UiService {
         </div>
       </div>
     `;
+  }
+
+  showReturnReminderModal(loan) {
+    const defaultMessage = `Hi ${loan.borrower_name},\n\nThis is a friendly reminder to return the book "${loan.book_title}" (by ${loan.book_author}) which was borrowed on ${new Date(loan.handover_date).toLocaleDateString()}.\n\nPlease let me know when you can return it. Thanks!`;
+
+    const bodyHtml = `
+      <form id="reminder-form" style="display:flex; flex-direction:column; gap:1.2rem;">
+        <p style="font-size:0.85rem; color:var(--text-secondary); line-height:1.4;">
+          Send an email reminder to <strong>${loan.borrower_name}</strong> (${loan.borrower_email}) to return this book. You can customize the message below:
+        </p>
+        <div class="form-group">
+          <label for="reminder-message" style="display:block; margin-bottom:0.4rem; font-weight:500; font-size:0.85rem; color:var(--text-secondary);">Message</label>
+          <textarea id="reminder-message" class="form-control" rows="6" style="width:100%; min-height:120px; font-family:inherit; font-size:0.9rem; padding:0.5rem; background:var(--bg-secondary); color:var(--text-primary); border:1px solid var(--border-color); border-radius:var(--radius-sm);" required>${defaultMessage}</textarea>
+        </div>
+        <div style="display:flex; justify-content:flex-end; gap:0.6rem; margin-top:0.5rem;">
+          <button type="button" class="btn btn-secondary" id="reminder-cancel">Cancel</button>
+          <button type="submit" class="btn btn-primary">Send Email</button>
+        </div>
+      </form>
+    `;
+
+    this.showModal('Send Return Reminder', bodyHtml);
+
+    document.getElementById('reminder-cancel').addEventListener('click', () => this.hideModal());
+
+    document.getElementById('reminder-form').addEventListener('submit', (e) => {
+      e.preventDefault();
+      const message = document.getElementById('reminder-message').value;
+      this.hideModal();
+      if (this.onActionCallback) {
+        this.onActionCallback('send_return_reminder', { loanId: loan.loan_id, message: message });
+      }
+    });
+  }
+
+  renderBookDetailsView(book, loans, currentUser) {
+    const view = document.getElementById('book-details-view');
+    if (!view) return;
+
+    // Find if there is an active loan on this book copy
+    const activeLoan = loans.find(l => String(l.book_id) === String(book.book_id) && ['Requested', 'Approved', 'Out', 'ReturnPending'].includes(l.status));
+    
+    const isOwner = currentUser && book.owner_email === currentUser.email;
+    const isSystemOwner = currentUser && currentUser.role === 'Owner';
+    const isApprovedUser = currentUser && currentUser.status === 'Approved';
+
+    let badgeClass = 'badge-available';
+    if (book.status === 'Requested') badgeClass = 'badge-requested';
+    if (book.status === 'Borrowed') badgeClass = 'badge-borrowed';
+    if (book.status === 'Lost') badgeClass = 'badge-lost';
+    if (book.status === 'Unavailable') badgeClass = 'badge-lost';
+
+    // Cover art fallback logic
+    const coverHtml = book.cover_url ? `
+      <img id="details-cover-img" src="${book.cover_url}" alt="${book.title}">
+    ` : `
+      <div class="book-no-cover" style="font-size: 1.25rem;">
+        ${ICONS.book}
+        <span>${book.title}</span>
+      </div>
+    `;
+
+    // Active loan block
+    let activeLoanHtml = '';
+    if (activeLoan) {
+      const isBorrowerOfThisLoan = currentUser && activeLoan.borrower_email === currentUser.email;
+      let loanStatusBadge = '';
+      let progressHtml = '';
+      
+      if (activeLoan.status === 'Requested') {
+        loanStatusBadge = `<span class="book-badge badge-requested" style="position:static; display:inline-block;">Requested</span>`;
+      } else if (activeLoan.status === 'Approved') {
+        loanStatusBadge = `<span class="book-badge badge-available" style="position:static; display:inline-block;">Approved (Awaiting Collection)</span>`;
+      } else if (activeLoan.status === 'Out') {
+        loanStatusBadge = `<span class="book-badge badge-borrowed" style="position:static; display:inline-block;">Borrowed</span>`;
+        
+        // Progress bar for due dates
+        const start = new Date(activeLoan.handover_date).getTime();
+        const due = new Date(activeLoan.due_date).getTime();
+        const now = Date.now();
+        const total = due - start;
+        const elapsed = now - start;
+        let percent = Math.min(100, Math.max(0, Math.round((elapsed / total) * 100)));
+        let alertClass = '';
+        if (percent > 85) alertClass = 'danger';
+        else if (percent > 60) alertClass = 'warning';
+        
+        const daysLeft = Math.ceil((due - now) / (1000 * 60 * 60 * 24));
+        const dueText = daysLeft < 0 ? `Overdue by ${Math.abs(daysLeft)} days!` : `${daysLeft} days remaining`;
+        
+        progressHtml = `
+          <div style="margin-top: 1rem; max-width: 400px;">
+            <div style="display:flex; justify-content:space-between; font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 0.25rem;">
+              <span>Loan Progress</span>
+              <span class="${daysLeft < 0 ? 'text-rose' : ''}">${dueText}</span>
+            </div>
+            <div class="progress-bar-container">
+              <div class="progress-bar ${alertClass}" style="width: ${percent}%;"></div>
+            </div>
+          </div>
+        `;
+      } else if (activeLoan.status === 'ReturnPending') {
+        loanStatusBadge = `<span class="book-badge badge-requested" style="position:static; display:inline-block;">Return Pending</span>`;
+      }
+
+      activeLoanHtml = `
+        <div class="glass-card" style="margin-top: 1.5rem; border-color: var(--border-color); padding: 1.25rem;">
+          <h3 class="book-details-section-title">
+            ${ICONS.calendar} Active Loan Details
+          </h3>
+          <div style="font-size: 0.85rem; display:flex; flex-direction:column; gap: 0.5rem; margin-top: 0.75rem;">
+            <div class="detail-item">
+              <span class="detail-label">Status</span>
+              <span class="detail-value">${loanStatusBadge}</span>
+            </div>
+            <div class="detail-item">
+              <span class="detail-label">Borrower</span>
+              <span class="detail-value">${activeLoan.borrower_name} (Flat ${activeLoan.borrower_flat})</span>
+            </div>
+            ${isApprovedUser && activeLoan.borrower_phone ? `
+              <div class="detail-item">
+                <span class="detail-label">Borrower Phone</span>
+                <span class="detail-value">${activeLoan.borrower_phone}</span>
+              </div>
+            ` : ''}
+            <div class="detail-item">
+              <span class="detail-label">Lender</span>
+              <span class="detail-value">${activeLoan.lender_name} (Flat ${activeLoan.lender_flat})</span>
+            </div>
+            ${isApprovedUser && activeLoan.lender_phone ? `
+              <div class="detail-item">
+                <span class="detail-label">Lender Phone</span>
+                <span class="detail-value">${activeLoan.lender_phone}</span>
+              </div>
+            ` : ''}
+            <div class="detail-item">
+              <span class="detail-label">Requested Duration</span>
+              <span class="detail-value">${activeLoan.duration_days} days</span>
+            </div>
+            <div class="detail-item">
+              <span class="detail-label">Request Date</span>
+              <span class="detail-value">${new Date(activeLoan.request_date).toLocaleDateString()}</span>
+            </div>
+            ${activeLoan.handover_date ? `
+              <div class="detail-item">
+                <span class="detail-label">Handover Date</span>
+                <span class="detail-value">${new Date(activeLoan.handover_date).toLocaleDateString()}</span>
+              </div>
+            ` : ''}
+            ${activeLoan.due_date ? `
+              <div class="detail-item">
+                <span class="detail-label">Due Date</span>
+                <span class="detail-value">${new Date(activeLoan.due_date).toLocaleDateString()}</span>
+              </div>
+            ` : ''}
+            <div class="detail-item">
+              <span class="detail-label">Notes</span>
+              <span class="detail-value" style="font-style: italic;">"${activeLoan.notes || 'None'}"</span>
+            </div>
+            ${progressHtml}
+          </div>
+        </div>
+      `;
+    }
+
+    // Action buttons construction
+    let actionButtonsHtml = '';
+    
+    if (isOwner) {
+      actionButtonsHtml += `
+        <button class="btn btn-secondary btn-details-edit">${ICONS.edit} Edit Details</button>
+        <button class="btn btn-secondary btn-details-toggle">${book.status === 'Unavailable' ? `${ICONS.unlock} Resume Availability` : `${ICONS.lock} Pause Availability`}</button>
+        <button class="btn btn-danger btn-details-delete" style="background:rgba(244,63,94,0.1); border:1px solid rgba(244,63,94,0.25); color:var(--accent-rose);">${ICONS.x} Remove Copy</button>
+      `;
+
+      if (activeLoan) {
+        if (activeLoan.status === 'Requested') {
+          actionButtonsHtml += `
+            <button class="btn btn-primary btn-details-approve" style="background:var(--accent-emerald); border-color:var(--accent-emerald); color:#fff; margin-left:auto;">${ICONS.check} Approve Request</button>
+            <button class="btn btn-secondary btn-details-reject">${ICONS.x} Reject Request</button>
+          `;
+        } else if (activeLoan.status === 'Approved') {
+          actionButtonsHtml += `
+            <button class="btn btn-warning btn-details-handover" style="margin-left:auto;">Confirm Handover</button>
+          `;
+        } else if (activeLoan.status === 'Out') {
+          actionButtonsHtml += `
+            <button class="btn btn-secondary btn-details-reminder" style="margin-left:auto; display:flex; align-items:center; gap:4px;">${ICONS.bell || ''} Send Reminder</button>
+            <button class="btn btn-primary btn-details-return">Mark as Returned</button>
+          `;
+        } else if (activeLoan.status === 'ReturnPending') {
+          actionButtonsHtml += `
+            <button class="btn btn-primary btn-details-return" style="background:var(--accent-emerald); border-color:var(--accent-emerald); color:#fff; margin-left:auto;">Confirm Return</button>
+          `;
+        }
+      }
+    } else if (isSystemOwner) {
+      actionButtonsHtml += `
+        <div style="width:100%; display:flex; flex-direction:column; gap:0.5rem; border: 1px dashed var(--accent-rose); padding:1rem; border-radius:var(--radius-md); background: rgba(244,63,94,0.03);">
+          <div style="font-size:0.7rem; color:var(--accent-rose); font-weight:700; text-align:center; letter-spacing:0.5px;">👑 OWNER OVERRIDE ACTIONS</div>
+          <div style="display:flex; gap:0.5rem; flex-wrap:wrap;">
+            <button class="btn btn-secondary btn-details-edit">${ICONS.edit} Edit Details</button>
+            <button class="btn btn-secondary btn-details-toggle">${book.status === 'Unavailable' ? `${ICONS.unlock} Resume` : `${ICONS.lock} Pause`}</button>
+            <button class="btn btn-danger btn-details-delete" style="background:rgba(244,63,94,0.1); border:1px solid rgba(244,63,94,0.25); color:var(--accent-rose);">${ICONS.x} Remove</button>
+          </div>
+        </div>
+      `;
+    } else {
+      // Guest or other borrower
+      if (book.status === 'Available') {
+        if (isApprovedUser) {
+          actionButtonsHtml += `
+            <button class="btn btn-primary btn-details-request" style="width:100%; max-width: 320px;">Request to Borrow</button>
+          `;
+        } else if (!currentUser) {
+          actionButtonsHtml += `
+            <button class="btn btn-primary btn-details-signin" style="width:100%; max-width: 320px;">Sign in to Borrow</button>
+          `;
+        } else {
+          actionButtonsHtml += `
+            <button class="btn btn-secondary" disabled style="width:100%; max-width: 320px;">Awaiting Profile Approval</button>
+          `;
+        }
+      } else if (activeLoan && currentUser && activeLoan.borrower_email === currentUser.email) {
+        if (activeLoan.status === 'Requested') {
+          actionButtonsHtml += `
+            <button class="btn btn-secondary" disabled style="width:100%; max-width: 320px;">Requested (Awaiting Lender Approval)</button>
+          `;
+        } else if (activeLoan.status === 'Approved') {
+          actionButtonsHtml += `
+            <button class="btn btn-warning" disabled style="width:100%; max-width: 320px;">Approved (Please Collect from Lender)</button>
+          `;
+        } else if (activeLoan.status === 'Out') {
+          actionButtonsHtml += `
+            <button class="btn btn-primary btn-details-borrower-return" style="width:100%; max-width: 320px;">Return Book</button>
+          `;
+        } else if (activeLoan.status === 'ReturnPending') {
+          actionButtonsHtml += `
+            <button class="btn btn-secondary" disabled style="width:100%; max-width: 320px;">Return Pending (Awaiting Lender Confirm)</button>
+          `;
+        }
+      } else {
+        actionButtonsHtml += `
+          <button class="btn btn-secondary" disabled style="width:100%; max-width: 320px;">Unavailable (Currently Borrowed)</button>
+        `;
+      }
+    }
+
+    view.innerHTML = `
+      <div class="dashboard-section">
+        <button class="btn btn-secondary btn-sm book-details-back-btn" id="btn-details-back">
+          ${ICONS.arrowLeft} Back
+        </button>
+        
+        <div class="book-details-layout">
+          <div class="book-details-cover-column">
+            <div class="book-details-big-cover">
+              ${coverHtml}
+            </div>
+            <span class="book-badge ${badgeClass} book-details-cover-badge" style="position:static;">${book.status}</span>
+            <div style="font-size: 0.8rem; color:var(--text-muted); font-weight:500;">Copy #${book.copy_number} &middot; ISBN: ${book.isbn || 'N/A'}</div>
+          </div>
+          
+          <div class="book-details-info-column">
+            <div class="book-details-header">
+              <h1 class="book-details-title">${book.title}</h1>
+              <div class="book-details-author">by ${book.author}</div>
+              <div style="margin-top: 0.5rem;">
+                <a href="https://www.goodreads.com/search?q=${encodeURIComponent(book.isbn || (book.title + ' ' + book.author))}" target="_blank" rel="noopener noreferrer" style="font-size: 0.85rem; display: inline-flex; align-items: center; gap: 4px; color: var(--accent-gold); font-weight: 500; text-decoration: underline;">
+                  ${ICONS.external} Search on Goodreads
+                </a>
+              </div>
+            </div>
+
+            <div class="book-details-block">
+              <h3 class="book-details-section-title">${ICONS.book} Book Information</h3>
+              <div class="book-details-meta-grid">
+                <div class="detail-item"><span class="detail-label">Genre</span><span class="detail-value">${book.genre || 'N/A'}</span></div>
+                <div class="detail-item"><span class="detail-label">Pages</span><span class="detail-value">${book.pages ? book.pages + ' pages' : 'N/A'}</span></div>
+                <div class="detail-item"><span class="detail-label">Language</span><span class="detail-value">${book.language || 'N/A'}</span></div>
+                <div class="detail-item"><span class="detail-label">Publisher</span><span class="detail-value">${book.publisher || 'N/A'}</span></div>
+                <div class="detail-item"><span class="detail-label">Publish Year</span><span class="detail-value">${book.publish_year || 'N/A'}</span></div>
+                <div class="detail-item"><span class="detail-label">Date Added</span><span class="detail-value">${book.created_at ? new Date(book.created_at).toLocaleDateString() : 'N/A'}</span></div>
+              </div>
+            </div>
+
+            <div class="book-details-block">
+              <h3 class="book-details-section-title">${ICONS.user} Lender Information</h3>
+              <div class="book-details-meta-grid">
+                <div class="detail-item"><span class="detail-label">Owner</span><span class="detail-value">${book.owner_name}</span></div>
+                <div class="detail-item"><span class="detail-label">Flat Number</span><span class="detail-value">Flat ${book.owner_flat || 'N/A'}</span></div>
+                ${isApprovedUser && book.owner_phone ? `
+                  <div class="detail-item"><span class="detail-label">Phone Number</span><span class="detail-value">${book.owner_phone}</span></div>
+                ` : ''}
+              </div>
+            </div>
+
+            ${activeLoanHtml}
+
+            <div class="book-details-block">
+              <h3 class="book-details-section-title">${ICONS.settings} Actions</h3>
+              <div class="book-details-actions-panel">
+                ${actionButtonsHtml}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+
+    // Add Cover image error callback
+    const img = view.querySelector('#details-cover-img');
+    if (img) {
+      img.addEventListener('error', () => {
+        img.parentElement.innerHTML = `<div class="book-no-cover" style="font-size: 1.25rem;">${ICONS.book}<span>${book.title}</span></div>`;
+      });
+    }
+
+    // Bind Event Listeners
+    const backBtn = view.querySelector('#btn-details-back');
+    if (backBtn && this.onViewChangeCallback) {
+      backBtn.addEventListener('click', () => {
+        if (this.onViewChangeCallback) this.onViewChangeCallback('back');
+      });
+    }
+
+    const editBtn = view.querySelector('.btn-details-edit');
+    if (editBtn) {
+      editBtn.addEventListener('click', () => this.showOwnerEditBookModal(book, currentUser));
+    }
+
+    const toggleBtn = view.querySelector('.btn-details-toggle');
+    if (toggleBtn) {
+      toggleBtn.addEventListener('click', () => {
+        if (this.onActionCallback) this.onActionCallback('toggle_book_availability', { bookId: book.book_id });
+      });
+    }
+
+    const deleteBtn = view.querySelector('.btn-details-delete');
+    if (deleteBtn) {
+      deleteBtn.addEventListener('click', () => {
+        this.showConfirmDialog(
+          `Remove "${book.title}" (Copy #${book.copy_number})?`,
+          'This will permanently remove this book copy from the library. Active loans are not affected.',
+          () => {
+            if (this.onActionCallback) this.onActionCallback('delete_book', { bookId: book.book_id });
+          }
+        );
+      });
+    }
+
+    const approveBtn = view.querySelector('.btn-details-approve');
+    if (approveBtn && activeLoan) {
+      approveBtn.addEventListener('click', () => {
+        if (this.onActionCallback) this.onActionCallback('approve_loan', { loanId: activeLoan.loan_id });
+      });
+    }
+
+    const rejectBtn = view.querySelector('.btn-details-reject');
+    if (rejectBtn && activeLoan) {
+      rejectBtn.addEventListener('click', () => {
+        if (this.onActionCallback) this.onActionCallback('reject_loan', { loanId: activeLoan.loan_id });
+      });
+    }
+
+    const handoverBtn = view.querySelector('.btn-details-handover');
+    if (handoverBtn && activeLoan) {
+      handoverBtn.addEventListener('click', () => {
+        if (this.onActionCallback) this.onActionCallback('handover_loan', { loanId: activeLoan.loan_id });
+      });
+    }
+
+    const returnBtn = view.querySelector('.btn-details-return');
+    if (returnBtn && activeLoan) {
+      returnBtn.addEventListener('click', () => {
+        if (this.onActionCallback) this.onActionCallback('return_confirm', { loanId: activeLoan.loan_id });
+      });
+    }
+
+    const reminderBtn = view.querySelector('.btn-details-reminder');
+    if (reminderBtn && activeLoan) {
+      reminderBtn.addEventListener('click', () => this.showReturnReminderModal(activeLoan));
+    }
+
+    const requestBtn = view.querySelector('.btn-details-request');
+    if (requestBtn) {
+      requestBtn.addEventListener('click', () => this.showRequestBorrowForm(book));
+    }
+
+    const signinBtn = view.querySelector('.btn-details-signin');
+    if (signinBtn && this.onViewChangeCallback) {
+      signinBtn.addEventListener('click', () => this.onViewChangeCallback('welcome'));
+    }
+
+    const borrowerReturnBtn = view.querySelector('.btn-details-borrower-return');
+    if (borrowerReturnBtn && activeLoan) {
+      borrowerReturnBtn.addEventListener('click', () => {
+        this.showConfirmDialog(
+          "Mark Book as Returned?",
+          "This will notify the lender that you have returned the book. They will need to confirm receipt.",
+          () => {
+            if (this.onActionCallback) this.onActionCallback('borrower_return_request', { loanId: activeLoan.loan_id });
+          }
+        );
+      });
+    }
   }
 }
 

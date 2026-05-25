@@ -23,23 +23,19 @@ class ApiClient {
 
   setToken(token) {
     this.idToken = token;
-    if (this.mockMode) {
-      localStorage.setItem('lib_mock_token', token);
-    }
+    localStorage.setItem('lib_token', token);
   }
 
   getToken() {
-    if (this.mockMode) {
-      return localStorage.getItem('lib_mock_token') || null;
+    if (!this.idToken) {
+      this.idToken = localStorage.getItem('lib_token') || null;
     }
     return this.idToken;
   }
 
   clearToken() {
     this.idToken = null;
-    if (this.mockMode) {
-      localStorage.removeItem('lib_mock_token');
-    }
+    localStorage.removeItem('lib_token');
   }
 
   /**
@@ -630,7 +626,7 @@ class ApiClient {
 
         const book = books.find(b => b.book_id === loan.book_id);
 
-        if (loan.status === 'Out') {
+        if (loan.status === 'Out' || loan.status === 'ReturnPending') {
           loan.status = 'Returned';
           loan.return_date = new Date().toISOString();
           
@@ -642,6 +638,37 @@ class ApiClient {
         }
 
         return { status: 'error', message: 'Invalid action for loan status' };
+      }
+
+      case 'borrowerReturnBook': {
+        if (!currentMockUser) return { status: 'error', message: 'Not authenticated', code: 401 };
+        const loan = loans.find(l => l.loan_id === payload.loanId);
+        if (!loan) return { status: 'error', message: 'Loan not found' };
+
+        if (loan.borrower_email !== currentMockUser.email) {
+          return { status: 'error', message: 'Unauthorized. Only the borrower can mark book as returned.' };
+        }
+
+        if (loan.status !== 'Out') {
+          return { status: 'error', message: 'Invalid action for loan status' };
+        }
+
+        loan.status = 'ReturnPending';
+        localStorage.setItem('lib_loans', JSON.stringify(loans));
+        return { status: 'success', message: 'Return confirmation request sent to lender!' };
+      }
+
+      case 'sendReturnReminder': {
+        if (!currentMockUser) return { status: 'error', message: 'Not authenticated', code: 401 };
+        const loan = loans.find(l => l.loan_id === payload.loanId);
+        if (!loan) return { status: 'error', message: 'Loan not found' };
+
+        if (loan.lender_email !== currentMockUser.email && !isOwnerRole(currentProfile)) {
+          return { status: 'error', message: 'Unauthorized.' };
+        }
+
+        console.log(`[MOCK EMAIL] Sending return reminder to ${loan.borrower_email}:\n${payload.message}`);
+        return { status: 'success', message: `Reminder email successfully simulated to ${loan.borrower_name}!` };
       }
 
       case 'adminGetUsers': {

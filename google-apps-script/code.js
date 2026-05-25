@@ -73,6 +73,13 @@ function setupDatabase() {
     ]);
   }
 
+  // Trigger GmailApp scope authorization prompt during setup
+  try {
+    GmailApp.getAliases();
+  } catch (e) {
+    Logger.log("GmailApp initialization: " + e.toString());
+  }
+
   Logger.log("Database initialized successfully!");
 }
 
@@ -133,6 +140,10 @@ function doPost(e) {
         return handoverBook(payload, verifiedUser);
       case 'returnBook':
         return returnBook(payload, verifiedUser);
+      case 'borrowerReturnBook':
+        return borrowerReturnBook(payload, verifiedUser);
+      case 'sendReturnReminder':
+        return sendReturnReminder(payload, verifiedUser);
       case 'adminGetUsers':
         return adminGetUsers(payload, verifiedUser);
       case 'adminUpdateUserStatus':
@@ -616,7 +627,7 @@ function returnBook(payload, user) {
   const booksSheet = SPREADSHEET.getSheetByName(TABS.BOOKS);
   const bookIndex = findRowIndexByKey(booksSheet, 'book_id', loan.book_id);
 
-  if (loan.status === 'Out') {
+  if (loan.status === 'Out' || loan.status === 'ReturnPending') {
     // Lender confirms receipt of book, transitions directly to Returned
     const now = new Date().toISOString();
     updateCell(loansSheet, loanIndex, 'status', 'Returned');
@@ -629,6 +640,65 @@ function returnBook(payload, user) {
   }
 
   return respondError('Invalid action for loan status: ' + loan.status);
+}
+
+function borrowerReturnBook(payload, user) {
+  if (!user) return respondError('Authentication required');
+  const loanId = payload.loanId;
+
+  const loansSheet = SPREADSHEET.getSheetByName(TABS.LOANS);
+  const loanIndex = findRowIndexByKey(loansSheet, 'loan_id', loanId);
+
+  if (loanIndex === -1) return respondError('Loan not found');
+  const loan = getRowAsObject(loansSheet, loanIndex);
+
+  if (loan.borrower_email !== user.email) {
+    return respondError('Unauthorized. Only the borrower can request return confirmation.');
+  }
+
+  if (loan.status !== 'Out') {
+    return respondError('Invalid action: book must be Out to mark as returned.');
+  }
+
+  updateCell(loansSheet, loanIndex, 'status', 'ReturnPending');
+
+  const booksSheet = SPREADSHEET.getSheetByName(TABS.BOOKS);
+  const bookIndex = findRowIndexByKey(booksSheet, 'book_id', loan.book_id);
+  const book = bookIndex !== -1 ? getRowAsObject(booksSheet, bookIndex) : null;
+  const bookTitle = book ? book.title : 'your book';
+
+  const subject = `Society Library: Return confirmation request for "${bookTitle}"`;
+  const body = `Hello Lender,\n\nThe borrower (${loan.borrower_name || user.name}) has marked your book "${bookTitle}" as returned.\n\nPlease log in to the Society Library and confirm that you have physically received the book.\n\nBest regards,\nSociety Library System`;
+  sendEmailNotification(loan.lender_email, subject, body);
+
+  return respond({ status: 'success', message: 'Return request submitted. Awaiting lender confirmation.' });
+}
+
+function sendReturnReminder(payload, user) {
+  if (!user) return respondError('Authentication required');
+  const loanId = payload.loanId;
+  const customMessage = payload.message;
+
+  if (!customMessage) return respondError('Message is required');
+
+  const loansSheet = SPREADSHEET.getSheetByName(TABS.LOANS);
+  const loanIndex = findRowIndexByKey(loansSheet, 'loan_id', loanId);
+
+  if (loanIndex === -1) return respondError('Loan not found');
+  const loan = getRowAsObject(loansSheet, loanIndex);
+
+  if (loan.lender_email !== user.email) {
+    const adminProfile = findRowByEmail(TABS.USERS, user.email);
+    const isOwner = adminProfile && adminProfile.role === 'Owner';
+    if (!isOwner) {
+      return respondError('Unauthorized. Only the lender or Owner can send reminders.');
+    }
+  }
+
+  const subject = `Society Library: Reminder to return book`;
+  sendEmailNotification(loan.borrower_email, subject, customMessage);
+
+  return respond({ status: 'success', message: 'Reminder email sent to borrower!' });
 }
 
 function adminGetUsers(payload, user) {
@@ -943,11 +1013,7 @@ function respondError(message, code) {
 function sendEmailNotification(to, subject, body) {
   try {
     if (!to) return;
-    MailApp.sendEmail({
-      to: to,
-      subject: subject,
-      body: body
-    });
+    GmailApp.sendEmail(to, subject, body);
     Logger.log("Email sent successfully to: " + to);
   } catch (err) {
     Logger.log("Error sending email: " + err.toString());
@@ -966,5 +1032,19 @@ function getAdminsAndOwnerEmails() {
   } catch (err) {
     Logger.log("Error getting admin emails: " + err.toString());
     return '';
+  }
+}
+
+/**
+ * Manually runnable test function to verify Gmail service authorization
+ */
+function testEmail() {
+  const email = Session.getActiveUser().getEmail();
+  if (email) {
+    sendEmailNotification(email, "Society Library: Test Email Confirmation", 
+      "Hello! If you are reading this email, the Google Apps Script Gmail authorization is successfully working and configured.");
+    Logger.log("Test email sent to: " + email);
+  } else {
+    Logger.log("No active user found to send a test email to.");
   }
 }

@@ -27,11 +27,14 @@ const CONFIG = {
 const STATE = {
   currentUser: null,
   activeView: 'catalog', // catalog, borrower, lender, admin
+  previousView: 'catalog',
   books: [],
   loans: [],
   users: [],
   stats: {}
 };
+
+let googleAuthInitialized = false;
 
 /**
  * Initialize the App
@@ -92,21 +95,20 @@ function renderDevBanner() {
  * Setup Google Sign-In or Mock Sign-In
  */
 function setupAuth() {
-  // If Mock Mode, check if there is an existing token in LocalStorage
-  if (CONFIG.MOCK_MODE) {
-    const savedToken = LibraryAPI.getToken();
-    if (savedToken) {
-      handleSignInSuccess(savedToken);
-    } else {
-      showWelcomeScreen();
-    }
+  const savedToken = LibraryAPI.getToken();
+  if (savedToken) {
+    handleSignInSuccess(savedToken);
+  } else {
+    showWelcomeScreen();
+  }
+}
+
+function initializeGoogleAuth() {
+  if (googleAuthInitialized) {
+    renderGoogleButton();
     return;
   }
 
-  // Render welcome screen immediately to show stats skeleton and sign-in button container
-  showWelcomeScreen();
-
-  // Polling wait helper for Google SDK
   let attempts = 0;
   const maxAttempts = 30; // 3 seconds total (30 * 100ms)
   
@@ -118,6 +120,7 @@ function setupAuth() {
           handleSignInSuccess(response.credential);
         }
       });
+      googleAuthInitialized = true;
       renderGoogleButton();
       hideInitProgress();
       return true;
@@ -268,6 +271,7 @@ async function handleSignInSuccess(token) {
  */
 function showWelcomeScreen() {
   STATE.currentUser = null;
+  LibraryAPI.clearToken();
   LibraryUI.renderNavbar(null);
   
   // Deactivate any active tab views
@@ -331,7 +335,7 @@ function showWelcomeScreen() {
       mockSignIn(selectedEmail);
     });
   } else {
-    renderGoogleButton();
+    initializeGoogleAuth();
   }
 }
 
@@ -339,7 +343,21 @@ function showWelcomeScreen() {
  * Tab/Route router
  */
 async function handleViewChange(view) {
-  if (view === 'logo-home') {
+  if (view === 'back') {
+    handleViewChange(STATE.previousView || 'catalog');
+    return;
+  }
+
+  let bookId = null;
+  let viewName = view;
+  if (view.startsWith('book-details:')) {
+    viewName = 'book-details';
+    bookId = view.split(':')[1];
+  } else {
+    STATE.previousView = view;
+  }
+
+  if (viewName === 'logo-home') {
     if (STATE.currentUser) {
       handleViewChange('catalog');
     } else {
@@ -349,19 +367,19 @@ async function handleViewChange(view) {
   }
 
   // Redirect authenticated users trying to access welcome page to catalog
-  if (STATE.currentUser && view === 'welcome') {
+  if (STATE.currentUser && viewName === 'welcome') {
     handleViewChange('catalog');
     return;
   }
 
-  if (!STATE.currentUser && view !== 'catalog') {
+  if (!STATE.currentUser && viewName !== 'catalog') {
     showWelcomeScreen();
     return;
   }
 
   showLoader();
   STATE.activeView = view;
-  LibraryUI.switchActiveTab(view);
+  LibraryUI.switchActiveTab(viewName);
 
   // Clear main-content welcome/onboarding screen if we are viewing a dashboard tab
   const mainContent = document.getElementById('main-content');
@@ -372,7 +390,11 @@ async function handleViewChange(view) {
   // Make sure stats are showing or hiding
   const statsSec = document.getElementById('stats-summary');
   if (statsSec) {
-    statsSec.style.display = 'block';
+    if (viewName === 'book-details') {
+      statsSec.style.display = 'none';
+    } else {
+      statsSec.style.display = 'block';
+    }
   }
 
   // Load and render specific tabs
@@ -380,21 +402,21 @@ async function handleViewChange(view) {
     // Hide all view templates
     document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
 
-    if (view === 'catalog') {
+    if (viewName === 'catalog') {
       const response = await LibraryAPI.request('getCatalog');
       STATE.books = response.data;
       LibraryUI.renderCatalogView(STATE.books, STATE.currentUser);
       document.getElementById('catalog-view').classList.add('active');
     } 
     
-    else if (view === 'borrower') {
+    else if (viewName === 'borrower') {
       const response = await LibraryAPI.request('getLoans');
       STATE.loans = response.data;
       LibraryUI.renderBorrowerDashboard(STATE.loans);
       document.getElementById('borrower-view').classList.add('active');
     } 
     
-    else if (view === 'lender') {
+    else if (viewName === 'lender') {
       const response = await LibraryAPI.request('getLoans');
       STATE.loans = response.data;
       const catResponse = await LibraryAPI.request('getCatalog');
@@ -403,15 +425,33 @@ async function handleViewChange(view) {
       document.getElementById('lender-view').classList.add('active');
     } 
     
-    else if (view === 'admin') {
+    else if (viewName === 'admin') {
       const response = await LibraryAPI.request('adminGetUsers');
       STATE.users = response.data;
       LibraryUI.renderAdminDashboard(STATE.users, STATE.currentUser);
       document.getElementById('admin-view').classList.add('active');
     }
+
+    else if (viewName === 'book-details') {
+      const catResponse = await LibraryAPI.request('getCatalog');
+      STATE.books = catResponse.data;
+      const loansResponse = await LibraryAPI.request('getLoans').catch(() => ({ data: [] })); // fall back if not logged in
+      STATE.loans = loansResponse.data || [];
+      
+      const book = STATE.books.find(b => b.book_id === bookId);
+      if (!book) {
+        LibraryUI.showToast("Book copy not found.", "error");
+        handleViewChange('catalog');
+        return;
+      }
+      
+      LibraryUI.renderBookDetailsView(book, STATE.loans, STATE.currentUser);
+      document.getElementById('book-details-view').classList.add('active');
+    }
   } catch (error) {
     LibraryUI.showToast("Failed to fetch dashboard data.", "error");
     console.error(error);
+  }
   } finally {
     hideLoader();
   }
@@ -476,32 +516,44 @@ async function handleUserAction(action, payload) {
       LibraryUI.showToast("Borrow request sent to lender!");
       LibraryUI.hideModal();
       await loadGlobalStats();
-      handleViewChange('borrower');
+      handleViewChange(STATE.activeView.startsWith('book-details:') ? STATE.activeView : 'borrower');
     } 
     
     else if (action === 'approve_loan') {
       await LibraryAPI.request('approveLoan', { loanId: payload.loanId });
       LibraryUI.showToast("Lending request approved.");
-      handleViewChange('lender');
+      handleViewChange(STATE.activeView.startsWith('book-details:') ? STATE.activeView : 'lender');
     } 
     
     else if (action === 'reject_loan') {
       await LibraryAPI.request('rejectLoan', { loanId: payload.loanId });
       LibraryUI.showToast("Lending request rejected.");
-      handleViewChange('lender');
+      handleViewChange(STATE.activeView.startsWith('book-details:') ? STATE.activeView : 'lender');
     } 
     
     else if (action === 'handover_loan') {
       await LibraryAPI.request('handoverBook', { loanId: payload.loanId });
       LibraryUI.showToast("Book handover confirmed. Loan is active!");
-      handleViewChange('lender');
+      handleViewChange(STATE.activeView.startsWith('book-details:') ? STATE.activeView : 'lender');
     } 
     
     else if (action === 'return_confirm') {
       const response = await LibraryAPI.request('returnBook', { loanId: payload.loanId });
       LibraryUI.showToast(response.message || "Book checked back in!");
       await loadGlobalStats();
-      handleViewChange('lender');
+      handleViewChange(STATE.activeView.startsWith('book-details:') ? STATE.activeView : 'lender');
+    }
+
+    else if (action === 'borrower_return_request') {
+      const response = await LibraryAPI.request('borrowerReturnBook', { loanId: payload.loanId });
+      LibraryUI.showToast(response.message || "Return requested!");
+      await loadGlobalStats();
+      handleViewChange(STATE.activeView.startsWith('book-details:') ? STATE.activeView : 'borrower');
+    }
+
+    else if (action === 'send_return_reminder') {
+      const response = await LibraryAPI.request('sendReturnReminder', payload);
+      LibraryUI.showToast(response.message || "Reminder sent.");
     } 
     
     else if (action === 'admin_update_status') {
