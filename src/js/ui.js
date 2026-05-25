@@ -1757,7 +1757,7 @@ class UiService {
   /**
    * Renders the Admin Panel (Resident approval and roles management)
    */
-  renderAdminDashboard(users, currentUser) {
+  renderAdminDashboard(users, currentUser, automation) {
     const view = document.getElementById('admin-view');
     const isOwnerUser = currentUser && currentUser.role === 'Owner';
 
@@ -1877,6 +1877,98 @@ class UiService {
           </div>
         </div>
         ` : ''}
+
+      ${isOwnerUser && automation ? (() => {
+        const trig = automation.triggers || {};
+        const notif = automation.notifications || {};
+
+        const hourLabel = h => {
+          if (h === 0) return '12 AM';
+          if (h < 12) return `${h} AM`;
+          if (h === 12) return '12 PM';
+          return `${h - 12} PM`;
+        };
+
+        const hourOptions = Array.from({length: 24}, (_, i) =>
+          `<option value="${i}" ${(trig[arguments[0]] && trig[arguments[0]].hour === i) ? 'selected' : ''}>${hourLabel(i)}</option>`
+        );
+
+        const triggerRow = (key, label, icon) => {
+          const cfg = trig[key] || { enabled: true, hour: 15 };
+          const opts = Array.from({length: 24}, (_, i) =>
+            `<option value="${i}" ${cfg.hour === i ? 'selected' : ''}>${hourLabel(i)}</option>`
+          ).join('');
+          return `
+            <div class="automation-row" data-trigger-key="${key}">
+              <div class="automation-row-info">
+                <span class="automation-icon">${icon}</span>
+                <div>
+                  <div class="automation-label">${label}</div>
+                  <div class="automation-sublabel">Runs daily at scheduled hour</div>
+                </div>
+              </div>
+              <div class="automation-row-controls">
+                <select class="form-control automation-hour-select" data-trigger-key="${key}" title="Scheduled hour" style="width:auto; padding: 0.3rem 0.5rem; font-size:0.8rem;">
+                  ${opts}
+                </select>
+                <label class="switch-control" title="${cfg.enabled ? 'Enabled' : 'Disabled'}">
+                  <input type="checkbox" class="automation-trigger-toggle" data-trigger-key="${key}" ${cfg.enabled ? 'checked' : ''}>
+                  <span class="slider-switch"></span>
+                </label>
+                <button class="btn btn-secondary btn-sm btn-trigger-now" data-notification-type="${key === 'dailyCheckOverdueLoans' ? 'overdue_loans' : key === 'dailyCheckLenderActions' ? 'lender_actions' : 'user_approvals'}" style="font-size:0.75rem; white-space:nowrap;">▶ Run Now</button>
+              </div>
+            </div>
+          `;
+        };
+
+        const notifRow = (key, label, icon) => {
+          const enabled = notif[key] !== false;
+          return `
+            <div class="automation-row" data-notif-key="${key}">
+              <div class="automation-row-info">
+                <span class="automation-icon">${icon}</span>
+                <div>
+                  <div class="automation-label">${label}</div>
+                </div>
+              </div>
+              <div class="automation-row-controls">
+                <label class="switch-control" title="${enabled ? 'Enabled' : 'Disabled'}">
+                  <input type="checkbox" class="automation-notif-toggle" data-notif-key="${key}" ${enabled ? 'checked' : ''}>
+                  <span class="slider-switch"></span>
+                </label>
+              </div>
+            </div>
+          `;
+        };
+
+        return `
+          <div class="automation-panel glass-card" style="margin-top:2rem;">
+            <div class="automation-panel-header">
+              <span style="font-size:1.3rem;">⚙️</span>
+              <div>
+                <h3 class="font-serif" style="margin:0; font-size:1.05rem; color:var(--text-primary);">Automation &amp; Email Notifications</h3>
+                <p style="margin:0; font-size:0.78rem; color:var(--text-muted); margin-top:0.2rem;">Manage scheduled daily triggers and email category preferences</p>
+              </div>
+            </div>
+
+            <div class="automation-section">
+              <div class="automation-section-title">📅 Daily Scheduled Triggers</div>
+              ${triggerRow('dailyCheckOverdueLoans',      '⚠️ Overdue Loan Reminders',          '📚')}
+              ${triggerRow('dailyCheckLenderActions',     '🔔 Lender Actions Digest',             '📋')}
+              ${triggerRow('dailyCheckPendingUserApprovals', '👤 Pending User Approvals Alert',   '🛡️')}
+            </div>
+
+            <div class="automation-section" style="margin-top:1.5rem;">
+              <div class="automation-section-title">✉️ Email Notification Categories</div>
+              ${notifRow('borrow_requests',   'Borrow Requests &amp; Approvals',       '📖')}
+              ${notifRow('return_actions',    'Return Confirmations &amp; Receipts',   '↩️')}
+              ${notifRow('user_registrations','User Registrations &amp; Approvals',    '🆕')}
+              ${notifRow('overdue_reminders', 'Daily Overdue Alerts',                  '⏰')}
+            </div>
+          </div>
+        `;
+      })() : ''}
+
       </div>
     `;
 
@@ -1952,6 +2044,48 @@ class UiService {
             });
           }
         );
+      });
+    });
+
+    // Owner: Automation trigger toggles
+    view.querySelectorAll('.automation-trigger-toggle').forEach(cb => {
+      cb.addEventListener('change', () => {
+        const key = cb.getAttribute('data-trigger-key');
+        const row = view.querySelector(`.automation-hour-select[data-trigger-key="${key}"]`);
+        const hour = row ? parseInt(row.value, 10) : 15;
+        if (this.onActionCallback) this.onActionCallback('admin_update_automation', {
+          triggers: { [key]: { enabled: cb.checked, hour } }
+        });
+      });
+    });
+
+    // Owner: Automation hour selects
+    view.querySelectorAll('.automation-hour-select').forEach(sel => {
+      sel.addEventListener('change', () => {
+        const key = sel.getAttribute('data-trigger-key');
+        const toggle = view.querySelector(`.automation-trigger-toggle[data-trigger-key="${key}"]`);
+        const enabled = toggle ? toggle.checked : true;
+        if (this.onActionCallback) this.onActionCallback('admin_update_automation', {
+          triggers: { [key]: { enabled, hour: parseInt(sel.value, 10) } }
+        });
+      });
+    });
+
+    // Owner: Trigger-now buttons
+    view.querySelectorAll('.btn-trigger-now').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const notifType = btn.getAttribute('data-notification-type');
+        if (this.onActionCallback) this.onActionCallback('admin_trigger_notification', { notificationType: notifType });
+      });
+    });
+
+    // Owner: Notification category toggles
+    view.querySelectorAll('.automation-notif-toggle').forEach(cb => {
+      cb.addEventListener('change', () => {
+        const key = cb.getAttribute('data-notif-key');
+        if (this.onActionCallback) this.onActionCallback('admin_update_automation', {
+          notifications: { [key]: cb.checked }
+        });
       });
     });
   }

@@ -776,6 +776,21 @@ async function handleUserAction(action, payload) {
       // Re-render navbar with updated name/flat
       LibraryUI.renderNavbar(STATE.currentUser);
     }
+
+    else if (action === 'admin_update_automation') {
+      const response = await LibraryAPI.request('adminUpdateAutomationSettings', payload);
+      STATE.automation = response.data;
+      // Clear cache so next navigation reflects new settings
+      if (!CONFIG.MOCK_MODE) LibraryAPI.setCache('adminGetAutomationSettings', response);
+      LibraryUI.showToast('Automation settings saved ✓');
+      // Re-render the admin panel in-place with updated settings
+      LibraryUI.renderAdminDashboard(STATE.users, STATE.currentUser, STATE.automation);
+    }
+
+    else if (action === 'admin_trigger_notification') {
+      const response = await LibraryAPI.request('adminTriggerNotification', payload);
+      LibraryUI.showToast(response.message || 'Trigger executed successfully!');
+    }
   } catch (error) {
     LibraryUI.showToast(error.message || "Action failed.", "error");
   } finally {

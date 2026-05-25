@@ -2078,6 +2078,142 @@ footer {
 }
 
 /* ============================================
+   Owner Automation Panel
+   ============================================ */
+.automation-panel {
+  padding: 1.5rem;
+  border: 1px solid var(--border-color);
+}
+
+.automation-panel-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.85rem;
+  margin-bottom: 1.5rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.automation-section-title {
+  font-family: var(--font-serif);
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-bottom: 0.75rem;
+}
+
+.automation-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.automation-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.75rem 1rem;
+  border-radius: var(--radius-md);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  transition: background var(--transition-fast);
+  flex-wrap: wrap;
+}
+
+.automation-row:hover {
+  background: var(--bg-surface-hover);
+}
+
+.automation-row-info {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex: 1;
+  min-width: 0;
+}
+
+.automation-icon {
+  font-size: 1.15rem;
+  flex-shrink: 0;
+}
+
+.automation-label {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.automation-sublabel {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  margin-top: 0.1rem;
+}
+
+.automation-row-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-shrink: 0;
+}
+
+/* Toggle Switch */
+.switch-control {
+  position: relative;
+  display: inline-block;
+  width: 2.6rem;
+  height: 1.4rem;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+.switch-control input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+  position: absolute;
+}
+
+.slider-switch {
+  position: absolute;
+  inset: 0;
+  background: rgba(0,0,0,0.15);
+  border-radius: 2rem;
+  transition: background var(--transition-fast);
+  border: 1px solid var(--border-color);
+}
+
+.slider-switch::before {
+  content: '';
+  position: absolute;
+  width: 1rem;
+  height: 1rem;
+  left: 0.18rem;
+  top: 50%;
+  transform: translateY(-50%);
+  background: #fff;
+  border-radius: 50%;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.25);
+  transition: transform var(--transition-fast), background var(--transition-fast);
+}
+
+.switch-control input:checked + .slider-switch {
+  background: var(--accent-emerald);
+  border-color: var(--accent-emerald);
+}
+
+.switch-control input:checked + .slider-switch::before {
+  transform: translateY(-50%) translateX(1.2rem);
+}
+
+.switch-control input:focus-visible + .slider-switch {
+  outline: 2px solid var(--accent-emerald);
+  outline-offset: 2px;
+}
+
+/* ============================================
    Stale Data Sync Banner
    ============================================ */
 .stale-banner {
