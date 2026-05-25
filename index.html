@@ -42,6 +42,14 @@
     <div class="init-progress-bar"></div>
   </div>
 
+  <!-- Global Activity Loader Overlay (Full Screen, Blocks Clicks) -->
+  <div id="loader" class="loader-overlay" style="display: none;" title="Loading...">
+    <div class="loader-spinner-container">
+      <div class="spinner loader-spinner"></div>
+      <div class="loader-text">Loading...</div>
+    </div>
+  </div>
+
   <div id="app">
     
     <!-- Top Header -->
@@ -74,11 +82,6 @@
           <div class="user-menu" id="user-menu">
             <!-- Sign In / Profile details dynamically injected -->
           </div>
-        </div>
-
-        <!-- Global Activity Loader Spinner -->
-        <div id="loader" style="display: none; position: absolute; top: 1rem; right: 50%; transform: translateX(50%); z-index: 100;" title="Loading...">
-          <div class="spinner"></div>
         </div>
       </div>
     </header>
