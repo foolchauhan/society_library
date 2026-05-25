@@ -372,15 +372,20 @@ function getLoans(payload, user) {
   });
 
   const formattedLoans = filteredLoans.map(loan => {
-    const book = bookMap[loan.book_id] || { title: 'Unknown', author: 'Unknown', cover_url: '' };
+    const book = bookMap[loan.book_id] || { title: 'Unknown', author: 'Unknown', cover_url: '', owner_email: '' };
     const borrower = userMap[loan.borrower_email] || { name: 'Unknown', flat_number: 'N/A', phone_number: 'N/A' };
     const lender = userMap[loan.lender_email] || { name: 'Unknown', flat_number: 'N/A', phone_number: 'N/A' };
+    const owner = userMap[book.owner_email] || { name: 'Unknown', flat_number: 'N/A', phone_number: 'N/A' };
     
     return {
       ...loan,
       book_title: book.title,
       book_author: book.author,
       book_cover: book.cover_url,
+      book_owner_email: book.owner_email || '',
+      book_owner_name: owner.name,
+      book_owner_flat: owner.flat_number,
+      book_owner_phone: owner.phone_number,
       borrower_name: borrower.name,
       borrower_flat: borrower.flat_number,
       borrower_phone: borrower.phone_number,
@@ -656,8 +661,12 @@ function handoverBook(payload, user) {
   if (loanIndex === -1) return respondError('Loan not found');
   const loan = getRowAsObject(loansSheet, loanIndex);
 
-  if (loan.lender_email !== user.email) {
-    return respondError('Unauthorized. Only the lender can confirm handover.');
+  if (loan.lender_email !== user.email && loan.borrower_email !== user.email) {
+    const adminProfile = findRowByEmail(TABS.USERS, user.email);
+    const isOwner = adminProfile && adminProfile.role === 'Owner';
+    if (!isOwner) {
+      return respondError('Unauthorized. Only the borrower, lender, or Owner can confirm handover.');
+    }
   }
 
   if (loan.status !== 'Approved') {

@@ -1207,11 +1207,14 @@ class UiService {
   /**
    * Renders the Borrower Dashboard
    */
-  renderBorrowerDashboard(loans) {
+  renderBorrowerDashboard(loans, currentUser = null) {
     const view = document.getElementById('borrower-view');
     
-    const activeLoans = loans.filter(l => l.status === 'Requested' || l.status === 'Approved' || l.status === 'Out' || l.status === 'ReturnPending');
-    const pastLoans = loans.filter(l => l.status === 'Returned' || l.status === 'Rejected');
+    // Filter loans to only those where the current user is the borrower
+    const myLoans = loans.filter(l => currentUser && l.borrower_email === currentUser.email);
+    
+    const activeLoans = myLoans.filter(l => l.status === 'Requested' || l.status === 'Approved' || l.status === 'Out' || l.status === 'ReturnPending');
+    const pastLoans = myLoans.filter(l => l.status === 'Returned' || l.status === 'Rejected');
 
     let activeLoansHtml = '';
     if (activeLoans.length === 0) {
@@ -1413,11 +1416,14 @@ class UiService {
   renderLenderDashboard(loans, books = [], currentUser = null) {
     const view = document.getElementById('lender-view');
     
+    // Filter loans to only those where the current user is the lender
+    const myLentLoans = loans.filter(l => currentUser && l.lender_email === currentUser.email);
+    
     // Group loans by operations needed
-    const requests = loans.filter(l => l.status === 'Requested');
-    const handovers = loans.filter(l => l.status === 'Approved');
-    const activeReturns = loans.filter(l => l.status === 'Out' || l.status === 'ReturnPending');
-    const history = loans.filter(l => l.status === 'Returned' || l.status === 'Rejected');
+    const requests = myLentLoans.filter(l => l.status === 'Requested');
+    const handovers = myLentLoans.filter(l => l.status === 'Approved');
+    const activeReturns = myLentLoans.filter(l => l.status === 'Out' || l.status === 'ReturnPending');
+    const history = myLentLoans.filter(l => l.status === 'Returned' || l.status === 'Rejected');
 
     // Filter books owned by the current user
     const myBooks = books.filter(b => currentUser && b.owner_email === currentUser.email);
@@ -3613,11 +3619,17 @@ class UiService {
     }
     const directLink = `${clientUrl}?view=book-details:${loan.book_id}`;
     
+    const ownerName = loan.book_owner_name || loan.lender_name || 'the owner';
+    const ownerFlat = loan.book_owner_flat || loan.lender_flat || 'N/A';
+    const ownerPhone = loan.book_owner_phone || loan.lender_phone || '';
+    const ownerContact = ownerPhone ? `${ownerName} (Flat ${ownerFlat}, Phone: ${ownerPhone})` : `${ownerName} (Flat ${ownerFlat})`;
+
     const defaultMessage = `Dear ${loan.borrower_name},
 
 This is a friendly reminder to return the book "${loan.book_title}" (by ${loan.book_author}), which you borrowed on ${new Date(loan.handover_date).toLocaleDateString()}.
 
-The loan is currently active, and the owner is requesting it back. Please coordinate the return at your earliest convenience.
+The loan is currently active, and the book owner is requesting it back. Please coordinate the return at your earliest convenience with the owner:
+Owner: ${ownerContact}
 
 You can view the details and mark the book as returned here:
 ${directLink}

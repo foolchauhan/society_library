@@ -493,7 +493,7 @@ async function handleViewChange(view) {
       const cachedLoans = isMock ? null : LibraryAPI.getCache('getLoans');
       if (cachedLoans) {
         STATE.loans = cachedLoans.data;
-        LibraryUI.renderBorrowerDashboard(STATE.loans);
+        LibraryUI.renderBorrowerDashboard(STATE.loans, STATE.currentUser);
         document.getElementById('borrower-view').classList.add('active');
         hideLoader();
         showStaleBanner();
@@ -510,7 +510,7 @@ async function handleViewChange(view) {
       if (isNew) {
         STATE.loans = response.data;
         if (STATE.activeView === 'borrower') {
-          LibraryUI.renderBorrowerDashboard(STATE.loans);
+          LibraryUI.renderBorrowerDashboard(STATE.loans, STATE.currentUser);
           document.getElementById('borrower-view').classList.add('active');
         }
       }

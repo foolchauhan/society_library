@@ -420,15 +420,20 @@ class ApiClient {
         });
 
         const formattedLoans = filteredLoans.map(loan => {
-          const book = bookMap[loan.book_id] || { title: 'Unknown', author: 'Unknown', cover_url: '' };
+          const book = bookMap[loan.book_id] || { title: 'Unknown', author: 'Unknown', cover_url: '', owner_email: '' };
           const borrower = userMap[loan.borrower_email] || { name: 'Unknown', flat_number: 'N/A', phone_number: 'N/A' };
           const lender = userMap[loan.lender_email] || { name: 'Unknown', flat_number: 'N/A', phone_number: 'N/A' };
+          const owner = userMap[book.owner_email] || { name: 'Unknown', flat_number: 'N/A', phone_number: 'N/A' };
 
           return {
             ...loan,
             book_title: book.title,
             book_author: book.author,
             book_cover: book.cover_url,
+            book_owner_email: book.owner_email || '',
+            book_owner_name: owner.name,
+            book_owner_flat: owner.flat_number,
+            book_owner_phone: owner.phone_number,
             borrower_name: borrower.name,
             borrower_flat: borrower.flat_number,
             borrower_phone: borrower.phone_number,
@@ -607,7 +612,7 @@ class ApiClient {
         if (!currentMockUser) return { status: 'error', message: 'Not authenticated', code: 401 };
         const loan = loans.find(l => l.loan_id === payload.loanId);
         if (!loan) return { status: 'error', message: 'Loan not found' };
-        if (loan.lender_email !== currentMockUser.email && !isOwnerRole(currentProfile))
+        if (loan.lender_email !== currentMockUser.email && loan.borrower_email !== currentMockUser.email && !isOwnerRole(currentProfile))
           return { status: 'error', message: 'Unauthorized' };
 
         const now = new Date();
