@@ -1300,13 +1300,13 @@ function dailyCheckOverdueLoans() {
     const users = getSheetDataAsObjects(usersSheet);
 
     const now = new Date();
-    // Normalize time to start of day for accurate day differences
     const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
 
+    // ========================================================
+    // PART 1: Overdue Loans Check (Status: Out, past due_date)
+    // ========================================================
     let overdueCount = 0;
-
     loans.forEach(loan => {
-      // Only process active borrowings currently out
       if (loan.status === 'Out' && loan.due_date) {
         const dueDate = new Date(loan.due_date);
         const dueTime = new Date(dueDate.getFullYear(), dueDate.getMonth(), dueDate.getDate()).getTime();
@@ -1316,21 +1316,18 @@ function dailyCheckOverdueLoans() {
           const diffMs = todayStart - dueTime;
           const daysLate = Math.floor(diffMs / (1000 * 60 * 60 * 24));
 
-          // Find book info
           const book = books.find(b => b.book_id === loan.book_id);
           const bookTitle = book ? book.title : 'Borrowed Book';
           const bookAuthor = book ? book.author : 'Unknown';
           const coverUrl = book ? book.cover_url : '';
 
-          // Find lender & borrower details
           const lender = users.find(u => u.email === loan.lender_email) || { name: 'Lender', flat_number: 'N/A' };
           const borrower = users.find(u => u.email === loan.borrower_email) || { name: 'Borrower', flat_number: 'N/A' };
 
-          // Build action link
           const baseUrl = 'https://foolchauhan.github.io/society_library'; 
           const actionLink = `${baseUrl}?view=book-details:${loan.book_id}`;
 
-          // Send HTML Email to Borrower
+          // Borrower Email
           const borrowerSubject = `⚠️ OVERDUE: Return reminder for "${bookTitle}" (Late by ${daysLate} day${daysLate > 1 ? 's' : ''})`;
           const borrowerHeading = `Book Return Overdue by ${daysLate} Day${daysLate > 1 ? 's' : ''}`;
           
@@ -1354,7 +1351,7 @@ function dailyCheckOverdueLoans() {
             borrowerHtml
           );
 
-          // Send HTML Email notification to Lender
+          // Lender Email
           const lenderSubject = `Society Library: Return reminder sent for your book "${bookTitle}"`;
           const lenderHeading = `Return Reminder Dispatched`;
           
@@ -1383,7 +1380,145 @@ function dailyCheckOverdueLoans() {
       }
     });
 
-    Logger.log(`Daily check complete. Overdue loans found: ${overdueCount}`);
+    // ========================================================
+    // PART 2: Pending User Approvals (status === 'Pending')
+    // ========================================================
+    const pendingUsers = users.filter(u => u.status === 'Pending');
+    if (pendingUsers.length > 0) {
+      const adminList = getAdminsAndOwnerEmails();
+      if (adminList) {
+        const baseUrl = 'https://foolchauhan.github.io/society_library';
+        const actionLink = `${baseUrl}?view=admin`;
+        const subject = `⚠️ ACTION REQUIRED: ${pendingUsers.length} New Resident Sign-up${pendingUsers.length > 1 ? 's' : ''} Pending Approval`;
+        
+        let usersTableHtml = `
+          <table border="1" cellpadding="6" cellspacing="0" style="border-collapse: collapse; font-size: 13px; color: #2c241b; border-color: #ebdcb9; width: 100%;">
+            <tr bgcolor="#f5f0e4" style="font-weight: bold; text-align: left;">
+              <th>Name</th>
+              <th>Email</th>
+              <th>Flat</th>
+              <th>Role</th>
+              <th>Registered Date</th>
+            </tr>
+        `;
+        pendingUsers.forEach(pu => {
+          const regDate = pu.created_at ? new Date(pu.created_at).toLocaleDateString() : 'N/A';
+          usersTableHtml += `
+            <tr>
+              <td>${pu.name}</td>
+              <td>${pu.email}</td>
+              <td>${pu.flat_number || 'N/A'}</td>
+              <td>${pu.role || 'Both'}</td>
+              <td>${regDate}</td>
+            </tr>
+          `;
+        });
+        usersTableHtml += `</table>`;
+
+        const detailsHtml = `
+          Hello Administrator,<br/><br/>
+          The following neighborhood residents have registered on the library portal and are awaiting approval:<br/><br/>
+          ${usersTableHtml}<br/>
+          Please approve their accounts to grant them library search, borrow, and lend permissions.
+        `;
+
+        const htmlBody = generateHtmlEmail(subject, "Pending Resident Approvals", detailsHtml, actionLink, "Go to Admin Panel");
+        sendEmailNotification(
+          adminList, 
+          subject, 
+          `Hello Administrator, there are ${pendingUsers.length} residents awaiting sign-up approval in the Society Library system.`, 
+          htmlBody
+        );
+        Logger.log(`Daily alert sent for ${pendingUsers.length} pending user approvals.`);
+      }
+    }
+
+    // ========================================================
+    // PART 3: Pending Action Items for Lenders (Requested or ReturnPending)
+    // ========================================================
+    const pendingLenderActions = {};
+
+    loans.forEach(loan => {
+      if (loan.status === 'Requested' || loan.status === 'ReturnPending') {
+        const lenderEmail = loan.lender_email;
+        if (!pendingLenderActions[lenderEmail]) {
+          pendingLenderActions[lenderEmail] = {
+            requested: [],
+            returnPending: []
+          };
+        }
+        
+        const book = books.find(b => b.book_id === loan.book_id) || { title: 'Unknown Book', author: 'Unknown' };
+        const borrower = users.find(u => u.email === loan.borrower_email) || { name: 'Resident', flat_number: 'N/A' };
+        
+        const item = {
+          loanId: loan.loan_id,
+          bookId: loan.book_id,
+          title: book.title,
+          author: book.author,
+          borrowerName: borrower.name,
+          borrowerFlat: borrower.flat_number,
+          date: loan.request_date || loan.return_date || new Date().toISOString()
+        };
+
+        if (loan.status === 'Requested') {
+          pendingLenderActions[lenderEmail].requested.push(item);
+        } else {
+          pendingLenderActions[lenderEmail].returnPending.push(item);
+        }
+      }
+    });
+
+    Object.keys(pendingLenderActions).forEach(lenderEmail => {
+      const actions = pendingLenderActions[lenderEmail];
+      const totalActions = actions.requested.length + actions.returnPending.length;
+      if (totalActions === 0) return;
+
+      const lenderProfile = users.find(u => u.email === lenderEmail) || { name: 'Resident' };
+      const baseUrl = 'https://foolchauhan.github.io/society_library';
+      const actionLink = `${baseUrl}?view=lender`;
+
+      const subject = `⚠️ ACTION REQUIRED: ${totalActions} Pending Item${totalActions > 1 ? 's' : ''} on your Library Books`;
+      const heading = `Library Actions Awaiting Your Approval`;
+
+      let detailsHtml = `Dear ${lenderProfile.name || 'Resident'},<br/><br/>`;
+      detailsHtml += `You have pending items on your shared books that require action on the portal:<br/><br/>`;
+
+      if (actions.requested.length > 0) {
+        detailsHtml += `<strong>Pending Borrow Requests (needs your approval):</strong><br/>`;
+        detailsHtml += `<table border="1" cellpadding="6" cellspacing="0" style="border-collapse: collapse; font-size: 13px; color: #2c241b; border-color: #ebdcb9; width: 100%; margin-bottom: 20px;">`;
+        detailsHtml += `<tr bgcolor="#f5f0e4"><th>Book Title</th><th>Borrower Name</th><th>Request Date</th></tr>`;
+        actions.requested.forEach(item => {
+          const reqDate = new Date(item.date).toLocaleDateString();
+          detailsHtml += `<tr><td>"${item.title}"</td><td>${item.borrowerName} (Flat ${item.borrowerFlat})</td><td>${reqDate}</td></tr>`;
+        });
+        detailsHtml += `</table>`;
+      }
+
+      if (actions.returnPending.length > 0) {
+        detailsHtml += `<strong>Pending Returns (needs your physical receipt confirmation):</strong><br/>`;
+        detailsHtml += `<table border="1" cellpadding="6" cellspacing="0" style="border-collapse: collapse; font-size: 13px; color: #2c241b; border-color: #ebdcb9; width: 100%; margin-bottom: 20px;">`;
+        detailsHtml += `<tr bgcolor="#f5f0e4"><th>Book Title</th><th>Borrower Name</th><th>Return Date</th></tr>`;
+        actions.returnPending.forEach(item => {
+          const retDate = new Date(item.date).toLocaleDateString();
+          detailsHtml += `<tr><td>"${item.title}"</td><td>${item.borrowerName} (Flat ${item.borrowerFlat})</td><td>${retDate}</td></tr>`;
+        });
+        detailsHtml += `</table>`;
+      }
+
+      detailsHtml += `Please log in to your Lending Desk to resolve these items.`;
+
+      const htmlBody = generateHtmlEmail(subject, heading, detailsHtml, actionLink, "Go to Lending Desk");
+      sendEmailNotification(
+        lenderEmail,
+        subject,
+        `Dear ${lenderProfile.name}, you have ${totalActions} pending actions on your books in the Society Library system.`,
+        htmlBody
+      );
+      Logger.log(`Daily actions email sent to lender: ${lenderEmail} (${totalActions} items).`);
+    });
+
+    Logger.log(`Daily check complete. Overdue loans: ${overdueCount}. User approvals pending: ${pendingUsers.length}.`);
   } catch (err) {
     Logger.log("Error in dailyCheckOverdueLoans: " + err.toString());
   }
