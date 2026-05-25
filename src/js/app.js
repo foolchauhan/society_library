@@ -49,6 +49,12 @@ async function initApp() {
   // Initialize API
   LibraryAPI.init(CONFIG.API_URL, CONFIG.GOOGLE_CLIENT_ID, CONFIG.MOCK_MODE);
 
+  // Handle API authentication expiration or invalidation errors
+  LibraryAPI.onAuthErrorCallback = () => {
+    showWelcomeScreen();
+    LibraryUI.showToast("Session expired. Please sign in again.", "error");
+  };
+
   // Initialize UI Service
   LibraryUI.init(handleViewChange, handleUserAction);
 
@@ -233,7 +239,13 @@ async function handleSignInSuccess(token) {
 
     if (STATE.currentUser.status === 'Approved') {
       loadGlobalStats(); // revalidate in background
-      handleViewChange('catalog'); // revalidate catalog in background
+      const urlParams = new URLSearchParams(window.location.search);
+      const redirectView = urlParams.get('view') || 'catalog';
+      if (window.history.replaceState) {
+        const cleanUrl = window.location.protocol + "//" + window.location.host + window.location.pathname;
+        window.history.replaceState({ path: cleanUrl }, '', cleanUrl);
+      }
+      handleViewChange(redirectView); // revalidate catalog in background
     } else if (STATE.currentUser.status === 'Pending') {
       LibraryUI.showPendingApprovalScreen(STATE.currentUser);
     }
@@ -288,9 +300,15 @@ async function handleSignInSuccess(token) {
           hideInitProgress();
           hideLoader();
         } else {
-          // Approved user! Load data and show catalog
+          // Approved user! Load data and show catalog (or the view specified in URL)
           await loadGlobalStats();
-          handleViewChange('catalog');
+          const urlParams = new URLSearchParams(window.location.search);
+          const redirectView = urlParams.get('view') || 'catalog';
+          if (window.history.replaceState) {
+            const cleanUrl = window.location.protocol + "//" + window.location.host + window.location.pathname;
+            window.history.replaceState({ path: cleanUrl }, '', cleanUrl);
+          }
+          handleViewChange(redirectView);
         }
       }
     }

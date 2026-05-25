@@ -113,7 +113,10 @@ function doPost(e) {
     let verifiedUser = null;
     if (idToken) {
       verifiedUser = verifyIdToken(idToken);
-      if (!verifiedUser) {
+      
+      // Public actions (like catalog or stats check) do not require throwing a 401 on token expiration
+      const publicActions = ['getCatalog', 'getStats'];
+      if (!verifiedUser && !publicActions.includes(action)) {
         return respondError('Invalid authentication token', 401);
       }
     }
@@ -241,13 +244,16 @@ function registerUser(payload, user) {
   if (status === 'Pending') {
     const adminList = getAdminsAndOwnerEmails();
     if (adminList) {
+      const baseUrl = payload.baseUrl || 'https://foolchauhan.github.io/society_library';
+      const actionLink = `${baseUrl}?view=admin`;
+      
       const subject = "Society Library: New Resident Registration Pending Approval";
       const body = `Hello Administrator,\n\nA new resident has registered for the Society Library and is pending approval:\n\n` +
                    `Name: ${payload.name || user.name}\n` +
                    `Email: ${user.email}\n` +
                    `Flat Number: ${payload.flatNumber || 'N/A'}\n` +
                    `Role: ${role}\n\n` +
-                   `Please log in to the Society Library and visit the Admin Panel to approve or deny this request.\n\n` +
+                   `You can review and approve this resident directly here:\n${actionLink}\n\n` +
                    `Best regards,\nSociety Library System`;
       sendEmailNotification(adminList, subject, body);
     }
@@ -480,13 +486,16 @@ function requestBook(payload, user) {
   const borrowerName = userProfile ? userProfile.name : user.name;
   const borrowerFlat = userProfile ? userProfile.flat_number : 'N/A';
   
+  const baseUrl = payload.baseUrl || 'https://foolchauhan.github.io/society_library';
+  const actionLink = `${baseUrl}?view=book-details:${bookRow.book_id}`;
+
   const subject = `Society Library: Borrow request for "${bookRow.title}"`;
   const body = `Hello Lender,\n\nA resident has requested to borrow one of your books:\n\n` +
                `Book: "${bookRow.title}" (by ${bookRow.author || 'Unknown'})\n` +
                `Requested By: ${borrowerName} (Flat ${borrowerFlat})\n` +
                `Duration: ${durationDays} days\n` +
                `Borrower Notes: ${notes || 'None'}\n\n` +
-               `Please log in to the Society Library and visit your Lending Desk to approve or reject this request.\n\n` +
+               `You can review and approve/reject this request directly here:\n${actionLink}\n\n` +
                `Best regards,\nSociety Library System`;
   sendEmailNotification(bookRow.owner_email, subject, body);
 
@@ -520,12 +529,16 @@ function approveLoan(payload, user) {
   const book = bookIndex !== -1 ? getRowAsObject(booksSheet, bookIndex) : null;
   const bookTitle = book ? book.title : 'the requested book';
 
+  const baseUrl = payload.baseUrl || 'https://foolchauhan.github.io/society_library';
+  const actionLink = `${baseUrl}?view=book-details:${loan.book_id}`;
+
   const subject = `Society Library: Borrow request APPROVED for "${bookTitle}"`;
   const body = `Hello Borrower,\n\n` +
                `Your request to borrow "${bookTitle}" has been APPROVED by the lender (${loan.lender_email}).\n\n` +
                `Please contact the lender to coordinate the physical handover of the book.\n\n` +
                `Lender Email: ${loan.lender_email}\n` +
                `Approved Duration: ${loan.duration_days} days\n\n` +
+               `You can view the loan status and details here:\n${actionLink}\n\n` +
                `Best regards,\nSociety Library System`;
   sendEmailNotification(loan.borrower_email, subject, body);
 
@@ -562,10 +575,13 @@ function rejectLoan(payload, user) {
   const book = bookIndex !== -1 ? getRowAsObject(booksSheet, bookIndex) : null;
   const bookTitle = book ? book.title : 'the requested book';
 
+  const baseUrl = payload.baseUrl || 'https://foolchauhan.github.io/society_library';
+  const actionLink = `${baseUrl}?view=catalog`;
+
   const subject = `Society Library: Borrow request declined for "${bookTitle}"`;
   const body = `Hello Borrower,\n\n` +
                `Unfortunately, your request to borrow "${bookTitle}" could not be approved by the lender at this time.\n\n` +
-               `The book has been returned to the catalog. You can request another copy or check in with the lender.\n\n` +
+               `The book has been returned to the catalog. You can request another copy here:\n${actionLink}\n\n` +
                `Best regards,\nSociety Library System`;
   sendEmailNotification(loan.borrower_email, subject, body);
 
@@ -667,8 +683,11 @@ function borrowerReturnBook(payload, user) {
   const book = bookIndex !== -1 ? getRowAsObject(booksSheet, bookIndex) : null;
   const bookTitle = book ? book.title : 'your book';
 
+  const baseUrl = payload.baseUrl || 'https://foolchauhan.github.io/society_library';
+  const actionLink = `${baseUrl}?view=book-details:${loan.book_id}`;
+
   const subject = `Society Library: Return confirmation request for "${bookTitle}"`;
-  const body = `Hello Lender,\n\nThe borrower (${loan.borrower_name || user.name}) has marked your book "${bookTitle}" as returned.\n\nPlease log in to the Society Library and confirm that you have physically received the book.\n\nBest regards,\nSociety Library System`;
+  const body = `Hello Lender,\n\nThe borrower (${loan.borrower_name || user.name}) has marked your book "${bookTitle}" as returned.\n\nPlease confirm receipt of the physical copy directly here:\n${actionLink}\n\nBest regards,\nSociety Library System`;
   sendEmailNotification(loan.lender_email, subject, body);
 
   return respond({ status: 'success', message: 'Return request submitted. Awaiting lender confirmation.' });
@@ -752,11 +771,14 @@ function adminUpdateUserStatus(payload, user) {
   }
 
   if (newStatus === 'Approved' && targetUser.status !== 'Approved') {
+    const baseUrl = payload.baseUrl || 'https://foolchauhan.github.io/society_library';
+    const actionLink = `${baseUrl}?view=catalog`;
+
     const subject = "Society Library: Your Account has been Approved! 🎉";
     const body = `Hello ${targetUser.name || 'Resident'},\n\n` +
                  `We are pleased to inform you that your Society Library account has been approved by the administrators.\n\n` +
                  `You can now log in to search the catalog, borrow books from neighbors, and lend your own books.\n\n` +
-                 `Link: https://foolchauhan.github.io/society_library\n\n` +
+                 `Access the library here:\n${actionLink}\n\n` +
                  `Happy Reading!\nSociety Library System`;
     sendEmailNotification(targetUser.email, subject, body);
   }
@@ -896,11 +918,14 @@ function adminEditUser(payload, user) {
   if (payload.status) updateCell(usersSheet, rowIndex, 'status', payload.status);
 
   if (payload.status === 'Approved' && targetUser.status !== 'Approved') {
+    const baseUrl = payload.baseUrl || 'https://foolchauhan.github.io/society_library';
+    const actionLink = `${baseUrl}?view=catalog`;
+
     const subject = "Society Library: Your Account has been Approved! 🎉";
     const body = `Hello ${targetUser.name || 'Resident'},\n\n` +
                  `We are pleased to inform you that your Society Library account has been approved by the administrators.\n\n` +
                  `You can now log in to search the catalog, borrow books from neighbors, and lend your own books.\n\n` +
-                 `Link: https://foolchauhan.github.io/society_library\n\n` +
+                 `Access the library here:\n${actionLink}\n\n` +
                  `Happy Reading!\nSociety Library System`;
     sendEmailNotification(targetUser.email, subject, body);
   }

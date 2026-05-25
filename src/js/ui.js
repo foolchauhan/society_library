@@ -3448,7 +3448,13 @@ class UiService {
   }
 
   showReturnReminderModal(loan) {
-    const defaultMessage = `Hi ${loan.borrower_name},\n\nThis is a friendly reminder to return the book "${loan.book_title}" (by ${loan.book_author}) which was borrowed on ${new Date(loan.handover_date).toLocaleDateString()}.\n\nPlease let me know when you can return it. Thanks!`;
+    let clientUrl = window.location.origin + window.location.pathname;
+    if (clientUrl.endsWith('/')) {
+      clientUrl = clientUrl.slice(0, -1);
+    }
+    const directLink = `${clientUrl}?view=book-details:${loan.book_id}`;
+    
+    const defaultMessage = `Hi ${loan.borrower_name},\n\nThis is a friendly reminder to return the book "${loan.book_title}" (by ${loan.book_author}) which was borrowed on ${new Date(loan.handover_date).toLocaleDateString()}.\n\nYou can view the details and mark it as returned here:\n${directLink}\n\nThanks!`;
 
     const bodyHtml = `
       <form id="reminder-form" style="display:flex; flex-direction:column; gap:1.2rem;">

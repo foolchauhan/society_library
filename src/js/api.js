@@ -51,9 +51,15 @@ class ApiClient {
     }
 
     const token = this.getToken();
+    let clientUrl = window.location.origin + window.location.pathname;
+    if (clientUrl.endsWith('/')) {
+      clientUrl = clientUrl.slice(0, -1);
+    }
+
     const requestBody = {
       action: action,
       idToken: token,
+      baseUrl: clientUrl,
       ...payload
     };
 
@@ -72,6 +78,13 @@ class ApiClient {
 
       const result = await response.json();
       if (result.status === 'error') {
+        if (result.code === 401 || (result.message && (result.message.includes('Invalid authentication token') || result.message.includes('Not authenticated')))) {
+          this.clearToken();
+          this.clearCache();
+          if (this.onAuthErrorCallback) {
+            this.onAuthErrorCallback();
+          }
+        }
         throw new Error(result.message || 'API request failed');
       }
 
