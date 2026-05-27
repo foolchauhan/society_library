@@ -275,8 +275,6 @@ header .container {
 }
 
 .logo span {
-  font-family: var(--font-serif);
-  font-style: italic;
   color: var(--accent-emerald);
 }
 
@@ -337,6 +335,17 @@ nav {
   font-weight: 600;
   color: var(--accent-emerald);
   overflow: hidden;
+  transition: all var(--transition-fast);
+}
+
+#profile-trigger:hover .user-avatar {
+  transform: scale(1.05);
+  border-color: var(--accent-emerald);
+  box-shadow: 0 0 8px var(--accent-emerald-glow);
+}
+
+#profile-trigger:hover .profile-name {
+  color: var(--accent-emerald) !important;
 }
 
 .user-avatar img {

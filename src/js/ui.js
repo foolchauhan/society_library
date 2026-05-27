@@ -495,16 +495,15 @@ class UiService {
     // Profile menu rendering
     const initials = user.name ? user.name.split(' ').map(n => n[0]).join('').substring(0,2).toUpperCase() : 'U';
     userMenu.innerHTML = `
-      <div class="user-avatar" title="${user.name} (${user.role}) - Flat ${user.flat_number}" style="cursor:pointer;" id="user-avatar-btn">
-        <span>${initials}</span>
+      <div id="profile-trigger" style="display: flex; align-items: center; gap: 0.75rem; cursor: pointer;" title="Edit My Profile">
+        <div class="user-avatar" id="user-avatar-btn">
+          <span>${initials}</span>
+        </div>
+        <div style="display: flex; flex-direction: column; font-size: 0.75rem; text-align: left; max-width: 100px;">
+          <span class="profile-name" style="font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text-primary); transition: color var(--transition-fast);">${user.name}</span>
+          <span style="color: var(--text-muted); font-size: 0.65rem;">Flat ${user.flat_number}</span>
+        </div>
       </div>
-      <div style="display: flex; flex-direction: column; font-size: 0.75rem; text-align: left; max-width: 100px;">
-        <span style="font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text-primary);">${user.name}</span>
-        <span style="color: var(--text-muted); font-size: 0.65rem;">Flat ${user.flat_number}</span>
-      </div>
-      <button class="btn btn-secondary btn-sm" id="edit-profile-btn" style="padding: 0.35rem 0.5rem;" title="Edit My Profile">
-        ${ICONS.edit}
-      </button>
       <button class="btn btn-secondary btn-sm" id="logout-btn" style="padding: 0.35rem 0.5rem;" title="Logout">
         ${ICONS.logOut}
       </button>
@@ -525,7 +524,7 @@ class UiService {
       if (this.onActionCallback) this.onActionCallback('logout');
     });
 
-    document.getElementById('edit-profile-btn').addEventListener('click', () => {
+    document.getElementById('profile-trigger').addEventListener('click', () => {
       if (this.onActionCallback) this.onActionCallback('open_edit_profile', user);
     });
 

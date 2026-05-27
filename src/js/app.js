@@ -66,6 +66,18 @@ async function initApp() {
 
   // Initialize Auth
   setupAuth();
+
+  // Handle popstate for browser back/forward buttons/gestures
+  window.addEventListener('popstate', (event) => {
+    if (event.state && event.state.view) {
+      handleViewChange(event.state.view, true);
+    } else {
+      // Default to URL query param or catalog
+      const urlParams = new URLSearchParams(window.location.search);
+      const view = urlParams.get('view') || 'catalog';
+      handleViewChange(view, true);
+    }
+  });
 }
 
 /**
@@ -242,10 +254,10 @@ async function handleSignInSuccess(token) {
       const urlParams = new URLSearchParams(window.location.search);
       const redirectView = urlParams.get('view') || 'catalog';
       if (window.history.replaceState) {
-        const cleanUrl = window.location.protocol + "//" + window.location.host + window.location.pathname;
-        window.history.replaceState({ path: cleanUrl }, '', cleanUrl);
+        const initialUrl = window.location.protocol + "//" + window.location.host + window.location.pathname + "?view=" + redirectView;
+        window.history.replaceState({ view: redirectView }, '', initialUrl);
       }
-      handleViewChange(redirectView); // revalidate catalog in background
+      handleViewChange(redirectView, true); // revalidate catalog in background
     } else if (STATE.currentUser.status === 'Pending') {
       LibraryUI.showPendingApprovalScreen(STATE.currentUser);
     }
@@ -305,10 +317,10 @@ async function handleSignInSuccess(token) {
           const urlParams = new URLSearchParams(window.location.search);
           const redirectView = urlParams.get('view') || 'catalog';
           if (window.history.replaceState) {
-            const cleanUrl = window.location.protocol + "//" + window.location.host + window.location.pathname;
-            window.history.replaceState({ path: cleanUrl }, '', cleanUrl);
+            const initialUrl = window.location.protocol + "//" + window.location.host + window.location.pathname + "?view=" + redirectView;
+            window.history.replaceState({ view: redirectView }, '', initialUrl);
           }
-          handleViewChange(redirectView);
+          handleViewChange(redirectView, true);
         }
       }
     }
@@ -347,7 +359,7 @@ function showWelcomeScreen() {
   const mainContent = document.getElementById('main-content');
   mainContent.innerHTML = `
     <div class="welcome-hero animate">
-      <h1>The Society <span class="font-serif">Library</span></h1>
+      <h1>The Society Library</h1>
       <p>A neighborhood collection of literary works. Share books you love, request books you want to read, and manage borrowings entirely within our society.</p>
       
       <div class="google-signin-btn-container" id="google-btn-container" style="margin-bottom: 1.5rem; width: 100%; max-width: 360px; margin-left: auto; margin-right: auto;">
@@ -400,9 +412,13 @@ function showWelcomeScreen() {
 /**
  * Tab/Route router
  */
-async function handleViewChange(view) {
+async function handleViewChange(view, isPopState = false) {
   if (view === 'back') {
-    handleViewChange(STATE.previousView || 'catalog');
+    if (window.history.length > 1) {
+      window.history.back();
+    } else {
+      handleViewChange('catalog');
+    }
     return;
   }
 
@@ -417,7 +433,7 @@ async function handleViewChange(view) {
 
   if (viewName === 'logo-home') {
     if (STATE.currentUser) {
-      handleViewChange('catalog');
+      handleViewChange('catalog', isPopState);
     } else {
       showWelcomeScreen();
     }
@@ -426,7 +442,7 @@ async function handleViewChange(view) {
 
   // Redirect authenticated users trying to access welcome page to catalog
   if (STATE.currentUser && viewName === 'welcome') {
-    handleViewChange('catalog');
+    handleViewChange('catalog', isPopState);
     return;
   }
 
@@ -437,6 +453,12 @@ async function handleViewChange(view) {
 
   STATE.activeView = view;
   LibraryUI.switchActiveTab(viewName);
+
+  // Push state to browser history if this isn't a popstate navigation
+  if (!isPopState && window.history.pushState) {
+    const newUrl = `${window.location.protocol}//${window.location.host}${window.location.pathname}?view=${view}`;
+    window.history.pushState({ view: view }, '', newUrl);
+  }
 
   // Clear main-content welcome/onboarding screen if we are viewing a dashboard tab
   const mainContent = document.getElementById('main-content');
