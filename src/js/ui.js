@@ -663,28 +663,28 @@ class UiService {
 
     statsContainer.innerHTML = `
       <div class="stats-grid">
-        <div class="glass-card stat-card">
+        <div class="glass-card stat-card" data-target-view="catalog" style="cursor: pointer;" title="View Catalog">
           <div class="stat-icon">${ICONS.book}</div>
           <div>
             <div class="stat-value" id="stat-books">${stats.totalBooks || 0}</div>
             <div class="stat-label">Total Books</div>
           </div>
         </div>
-        <div class="glass-card stat-card">
+        <div class="glass-card stat-card" data-target-view="admin" style="cursor: pointer;" title="View Registered Members">
           <div class="stat-icon">${ICONS.user}</div>
           <div>
             <div class="stat-value" id="stat-members">${stats.totalUsers || 0}</div>
             <div class="stat-label">Registered Members</div>
           </div>
         </div>
-        <div class="glass-card stat-card">
+        <div class="glass-card stat-card" data-target-view="lender" style="cursor: pointer;" title="View Lending Desk History">
           <div class="stat-icon">${ICONS.lending}</div>
           <div>
             <div class="stat-value" id="stat-loans">${stats.totalLoans || 0}</div>
             <div class="stat-label">Lending History</div>
           </div>
         </div>
-        <div class="glass-card stat-card">
+        <div class="glass-card stat-card" data-target-view="lender" style="cursor: pointer;" title="View Active Checked Out Books">
           <div class="stat-icon">${ICONS.calendar}</div>
           <div>
             <div class="stat-value" id="stat-active">${stats.activeLoans || 0}</div>
@@ -693,6 +693,21 @@ class UiService {
         </div>
       </div>
     `;
+
+    // Bind click events to stats cards
+    statsContainer.querySelectorAll('.stat-card').forEach(card => {
+      card.addEventListener('click', () => {
+        const targetView = card.getAttribute('data-target-view');
+        if (targetView && this.onViewChangeCallback) {
+          // Switch tab visually in header links
+          const navLink = document.querySelector(`.nav-link[data-view="${targetView}"]`);
+          if (navLink) {
+            this.switchActiveTab(navLink);
+          }
+          this.onViewChangeCallback(targetView);
+        }
+      });
+    });
   }
 
   /**

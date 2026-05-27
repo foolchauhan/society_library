@@ -454,6 +454,13 @@ nav {
   display: flex;
   align-items: center;
   gap: 1.25rem;
+  transition: transform var(--transition-fast), box-shadow var(--transition-fast), border-color var(--transition-fast);
+}
+
+.stat-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--accent-emerald);
+  box-shadow: 0 4px 12px var(--accent-emerald-glow);
 }
 
 .stat-icon {

@@ -357,7 +357,7 @@ function showWelcomeScreen() {
   hideLoader();
 
   const statsSec = document.getElementById('stats-summary');
-  if (statsSec) statsSec.style.display = 'block';
+  if (statsSec) statsSec.style.display = 'none';
 
   // Load stats first to show on landing page
   loadGlobalStats();
@@ -475,7 +475,8 @@ async function handleViewChange(view, isPopState = false) {
   // Make sure stats are showing or hiding
   const statsSec = document.getElementById('stats-summary');
   if (statsSec) {
-    if (viewName === 'book-details') {
+    const isOwnerOrAdmin = STATE.currentUser && (STATE.currentUser.role === 'Owner' || STATE.currentUser.role === 'Admin');
+    if (viewName === 'book-details' || !isOwnerOrAdmin) {
       statsSec.style.display = 'none';
     } else {
       statsSec.style.display = 'block';
