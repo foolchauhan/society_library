@@ -511,7 +511,7 @@ class UiService {
     // Profile menu rendering
     const initials = user.name ? user.name.split(' ').map(n => n[0]).join('').substring(0,2).toUpperCase() : 'U';
     userMenu.innerHTML = `
-      <div id="profile-trigger" style="display: flex; align-items: center; gap: 0.75rem; cursor: pointer;" title="Edit My Profile">
+      <div id="profile-trigger" style="display: flex; align-items: center; gap: 0.75rem; cursor: pointer;" title="Edit My Profile & Logout">
         <div class="user-avatar" id="user-avatar-btn">
           <span>${initials}</span>
         </div>
@@ -520,9 +520,6 @@ class UiService {
           <span style="color: var(--text-muted); font-size: 0.65rem;">Flat ${user.flat_number}</span>
         </div>
       </div>
-      <button class="btn btn-secondary btn-sm" id="logout-btn" style="padding: 0.35rem 0.5rem;" title="Logout">
-        ${ICONS.logOut}
-      </button>
     `;
 
     // Add Tab Navigation click handlers for top header
@@ -534,10 +531,6 @@ class UiService {
           this.onViewChangeCallback(targetView);
         }
       });
-    });
-
-    document.getElementById('logout-btn').addEventListener('click', () => {
-      if (this.onActionCallback) this.onActionCallback('logout');
     });
 
     document.getElementById('profile-trigger').addEventListener('click', () => {
@@ -1666,6 +1659,9 @@ class UiService {
       <div class="dashboard-section">
         <div class="section-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
           <h2 class="section-title font-serif" style="margin: 0;">Lending Desk</h2>
+          <button class="btn btn-primary btn-sm" id="btn-lending-add-book" style="display: flex; align-items: center; gap: 4px;">
+            ${ICONS.plus || ''} Lend a Book
+          </button>
         </div>
 
         <!-- My Books Section -->
@@ -2374,15 +2370,24 @@ class UiService {
           <input type="tel" class="form-control" id="profile-edit-phone" value="${user.phone_number || ''}" required placeholder="e.g. 9876543210">
         </div>
 
-        <div style="display: flex; justify-content: flex-end; gap: 0.75rem; margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid var(--border-color);">
-          <button type="button" class="btn btn-secondary" id="profile-edit-cancel">Cancel</button>
-          <button type="submit" class="btn btn-primary" id="profile-edit-submit">${ICONS.check} Save Changes</button>
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid var(--border-color);">
+          <button type="button" class="btn btn-danger" id="profile-edit-logout" style="background: rgba(244,63,94,0.1); border: 1px solid rgba(244,63,94,0.25); color: var(--accent-rose); display: flex; align-items: center; gap: 4px; padding: 0.5rem 1rem;">
+            ${ICONS.logOut} Logout
+          </button>
+          <div style="display: flex; gap: 0.75rem;">
+            <button type="button" class="btn btn-secondary" id="profile-edit-cancel">Cancel</button>
+            <button type="submit" class="btn btn-primary" id="profile-edit-submit">${ICONS.check} Save Changes</button>
+          </div>
         </div>
       </form>
     `;
 
     this.showModal('Edit My Profile', bodyHtml);
     document.getElementById('profile-edit-cancel').addEventListener('click', () => this.hideModal());
+    document.getElementById('profile-edit-logout').addEventListener('click', () => {
+      this.hideModal();
+      if (this.onActionCallback) this.onActionCallback('logout');
+    });
 
     const blockSel = document.getElementById('profile-edit-block');
     const flatNumSel = document.getElementById('profile-edit-flatnum');
