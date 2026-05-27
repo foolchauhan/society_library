@@ -3,36 +3,20 @@
  * Manages routing, auth state, and coordinates API and UI updates.
  */
 
-import { LibraryAPI } from './api.js?v=1.0.21';
-import { LibraryUI } from './ui.js?v=1.0.21';
-
-// ==========================================
-// CONFIGURATION
-// ==========================================
-const CONFIG = {
-  // 1. Google Apps Script Web App URL (Paste your URL ending in /exec)
-  API_URL: 'https://script.google.com/macros/s/AKfycbw6mqLinDMrZKa4LludqbDWLzbokzw-FrTXiIufbDyjUlEsgd8mOjXvirxQil-SsY2e/exec',
-  LIBRARY: 'https://script.google.com/macros/library/d/1qt_3RutftFNkrNPSfE9KQ-VXZkBHOr2cklVB8CSPloAQCrQgskrK4HlQ/1',
-  // 2. Google OAuth Client ID (Create in Google Cloud Console)
-  GOOGLE_CLIENT_ID: '808755716635-acpg9qup3f2e4focnel2l5rgm9t0evrj.apps.googleusercontent.com',
-
-  // 3. Mock Mode: Set to true to test the app instantly in browser storage.
-  // Set to false when you are ready to link your Google Sheets + Google Sign-In.
-  MOCK_MODE: false
-};
-
-// ==========================================
-// STATE MANAGEMENT
-// ==========================================
-const STATE = {
-  currentUser: null,
-  activeView: 'catalog', // catalog, borrower, lender, admin
-  previousView: 'catalog',
-  books: [],
-  loans: [],
-  users: [],
-  stats: {}
-};
+import { CONFIG } from './config.js';
+import { STATE } from './state.js';
+import { LibraryAPI } from './core/api.js';
+import { ICONS } from './ui/icons.js';
+import { initNavbar, renderNavbar, switchActiveTab } from './ui/components/navbar.js';
+import { initStats, renderStats, renderStatsSkeleton } from './ui/components/stats.js';
+import { showToast } from './ui/components/toast.js';
+import { isModalActive, hideModal } from './ui/components/modal.js';
+import { initCatalogView, renderCatalogView, showAddBookForm } from './ui/views/catalog.js';
+import { initBorrowerView, renderBorrowerDashboard } from './ui/views/borrower.js';
+import { initLenderView, renderLenderDashboard } from './ui/views/lender.js';
+import { initAdminView, renderAdminDashboard } from './ui/views/admin.js';
+import { initBookDetailsView, renderBookDetailsView } from './ui/views/book-details.js';
+import { initProfileView, showRegistrationForm, showPendingApprovalScreen, showEditProfileModal } from './ui/views/profile.js';
 
 let googleAuthInitialized = false;
 
@@ -52,11 +36,20 @@ async function initApp() {
   // Handle API authentication expiration or invalidation errors
   LibraryAPI.onAuthErrorCallback = () => {
     showWelcomeScreen();
-    LibraryUI.showToast("Session expired. Please sign in again.", "error");
+    showToast("Session expired. Please sign in again.", "error");
   };
 
-  // Initialize UI Service
-  LibraryUI.init(handleViewChange, handleUserAction);
+  // Initialize UI components
+  initNavbar(handleViewChange, handleUserAction, showAddBookForm);
+  initStats(handleViewChange);
+  
+  // Initialize UI views
+  initCatalogView(handleViewChange, handleUserAction);
+  initBorrowerView(handleViewChange, handleUserAction);
+  initLenderView(handleViewChange, handleUserAction);
+  initAdminView(handleViewChange, handleUserAction);
+  initBookDetailsView(handleViewChange, handleUserAction);
+  initProfileView(handleUserAction);
 
   // Initialize Theme Switcher
   initTheme();
@@ -70,8 +63,8 @@ async function initApp() {
   // Handle popstate for browser back/forward buttons/gestures
   window.addEventListener('popstate', (event) => {
     // If a modal is currently open, close it and prevent page view navigation
-    if (LibraryUI.isModalActive()) {
-      LibraryUI.hideModal(true); // true indicates it's popped by history back, so we do not call history.back() again!
+    if (isModalActive()) {
+      hideModal(true); // true indicates it's popped by history back, so we do not call history.back() again!
       return;
     }
 
@@ -167,7 +160,7 @@ function initializeGoogleAuth() {
       document.getElementById('main-content').innerHTML = `
         <div class="glass-card" style="max-width:500px; margin: 4rem auto; padding: 2.5rem; text-align:center;">
           <h2 class="font-serif" style="color:var(--accent-rose); margin-bottom:1rem;">Auth Error</h2>
-          <p style="color:var(--text-secondary); margin-bottom:1.5rem;">Google Authentication service could not be loaded. Please ensure you are online or disable Mock Mode in <code>app.js</code>.</p>
+          <p style="color:var(--text-secondary); margin-bottom:1.5rem;">Google Authentication service could not be loaded. Please ensure you are online or disable Mock Mode in <code>config.js</code>.</p>
           <button class="btn btn-primary" onclick="window.location.reload()">Retry Connection</button>
         </div>
       `;
@@ -227,13 +220,13 @@ async function handleSignInSuccess(token) {
 
   let profileData = decodeJwt(token);
   if (!profileData && isMock) {
-    // In Mock Mode, decodeJwt will fail on custom tokens, so we create a mock profile
+    // In Mock Mode, decodeJwt fails on custom tokens, so we create a mock profile
     const email = token.replace('mock-token-', '');
     profileData = { email: email, name: email.split('@')[0] };
   }
 
   if (!profileData) {
-    LibraryUI.showToast("Authentication decoding failed.", "error");
+    showToast("Authentication decoding failed.", "error");
     showWelcomeScreen();
     hideInitProgress();
     hideLoader();
@@ -251,7 +244,7 @@ async function handleSignInSuccess(token) {
       STATE.currentUser.role = 'Owner';
       STATE.currentUser.status = 'Approved';
     }
-    LibraryUI.renderNavbar(STATE.currentUser);
+    renderNavbar(STATE.currentUser);
     hideInitProgress();
     hideLoader();
 
@@ -265,7 +258,7 @@ async function handleSignInSuccess(token) {
       }
       handleViewChange(redirectView, true); // revalidate catalog in background
     } else if (STATE.currentUser.status === 'Pending') {
-      LibraryUI.showPendingApprovalScreen(STATE.currentUser);
+      showPendingApprovalScreen(STATE.currentUser);
     }
   }
 
@@ -284,28 +277,27 @@ async function handleSignInSuccess(token) {
     const isStateChanged = !hasCached || JSON.stringify(cachedProfile) !== JSON.stringify(response);
 
     if (isStateChanged) {
-      // Deactivate any active tab views first
+      // Deactivate active views
       document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
 
       if (response.status === 'not_registered') {
-        // User has authenticated but doesn't exist in database: render Registration Screen
-        LibraryUI.showRegistrationForm(profileData.email, profileData.name);
+        // User registered in OAuth but not in Sheet DB: render Registration
+        showRegistrationForm(profileData.email, profileData.name);
         hideInitProgress();
         hideLoader();
       } else {
-        // User registered! Set state
+        // Registered: Set state
         STATE.currentUser = response.data;
         if (profileData.email === 'chauhanchetan82@gmail.com') {
           STATE.currentUser.role = 'Owner';
           STATE.currentUser.status = 'Approved';
         }
         
-        // Update UI Header
-        LibraryUI.renderNavbar(STATE.currentUser);
+        renderNavbar(STATE.currentUser);
 
         // Verify profile status
         if (STATE.currentUser.status === 'Pending') {
-          LibraryUI.showPendingApprovalScreen(STATE.currentUser);
+          showPendingApprovalScreen(STATE.currentUser);
           hideInitProgress();
           hideLoader();
         } else if (STATE.currentUser.status === 'Suspended') {
@@ -318,7 +310,7 @@ async function handleSignInSuccess(token) {
           hideInitProgress();
           hideLoader();
         } else {
-          // Approved user! Load data and show catalog (or the view specified in URL)
+          // Approved user! Load data and show catalog/URL view
           await loadGlobalStats();
           const urlParams = new URLSearchParams(window.location.search);
           const redirectView = urlParams.get('view') || 'catalog';
@@ -332,7 +324,7 @@ async function handleSignInSuccess(token) {
     }
   } catch (error) {
     if (!hasCached) {
-      LibraryUI.showToast("Could not load user profile. Check console.", "error");
+      showToast("Could not load user profile. Check console.", "error");
       showWelcomeScreen();
       hideInitProgress();
       hideLoader();
@@ -343,23 +335,21 @@ async function handleSignInSuccess(token) {
 }
 
 /**
- * Renders the Welcome Hero Landing page
+ * Renders the Welcome Landing page
  */
 function showWelcomeScreen() {
   STATE.currentUser = null;
   LibraryAPI.clearToken();
-  LibraryUI.renderNavbar(null);
+  renderNavbar(null);
   
-  // Deactivate any active tab views
+  // Deactivate active views
   document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
-  
-  // Ensure loader is hidden
   hideLoader();
 
   const statsSec = document.getElementById('stats-summary');
   if (statsSec) statsSec.style.display = 'none';
 
-  // Load stats first to show on landing page
+  // Fetch landing statistics in background
   loadGlobalStats();
 
   const mainContent = document.getElementById('main-content');
@@ -369,7 +359,6 @@ function showWelcomeScreen() {
       <p>A neighborhood collection of literary works. Share books you love, request books you want to read, and manage borrowings entirely within our society.</p>
       
       <div class="google-signin-btn-container" id="google-btn-container" style="margin-bottom: 1.5rem; width: 100%; max-width: 360px; margin-left: auto; margin-right: auto;">
-        <!-- Render Google button or Mock triggers -->
         ${CONFIG.MOCK_MODE ? `
           <div style="display:flex; flex-direction:column; align-items:stretch; gap: 0.8rem; background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); padding: 1.5rem; border-radius: var(--radius-md); backdrop-filter: blur(10px); text-align: left;">
             <div style="font-size: 0.85rem; font-weight: 600; color: var(--text-secondary); margin-bottom: 0.25rem;">Choose Demo Profile to Sign In:</div>
@@ -446,7 +435,6 @@ async function handleViewChange(view, isPopState = false) {
     return;
   }
 
-  // Redirect authenticated users trying to access welcome page to catalog
   if (STATE.currentUser && viewName === 'welcome') {
     handleViewChange('catalog', isPopState);
     return;
@@ -458,21 +446,18 @@ async function handleViewChange(view, isPopState = false) {
   }
 
   STATE.activeView = view;
-  LibraryUI.switchActiveTab(viewName);
+  switchActiveTab(viewName);
 
-  // Push state to browser history if this isn't a popstate navigation
   if (!isPopState && window.history.pushState) {
     const newUrl = `${window.location.protocol}//${window.location.host}${window.location.pathname}?view=${view}`;
     window.history.pushState({ view: view }, '', newUrl);
   }
 
-  // Clear main-content welcome/onboarding screen if we are viewing a dashboard tab
   const mainContent = document.getElementById('main-content');
   if (mainContent) {
     mainContent.innerHTML = '';
   }
 
-  // Make sure stats are showing or hiding
   const statsSec = document.getElementById('stats-summary');
   if (statsSec) {
     const isOwnerOrAdmin = STATE.currentUser && (STATE.currentUser.role === 'Owner' || STATE.currentUser.role === 'Admin');
@@ -483,18 +468,15 @@ async function handleViewChange(view, isPopState = false) {
     }
   }
 
-  // Load and render specific tabs
   try {
-    // Hide all view templates
     document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
-
     const isMock = CONFIG.MOCK_MODE;
 
     if (viewName === 'catalog') {
       const cachedCatalog = isMock ? null : LibraryAPI.getCache('getCatalog');
       if (cachedCatalog) {
         STATE.books = cachedCatalog.data;
-        LibraryUI.renderCatalogView(STATE.books, STATE.currentUser);
+        renderCatalogView(STATE.books, STATE.currentUser);
         document.getElementById('catalog-view').classList.add('active');
         hideLoader();
         showStaleBanner();
@@ -511,7 +493,7 @@ async function handleViewChange(view, isPopState = false) {
       if (isNew) {
         STATE.books = response.data;
         if (STATE.activeView === 'catalog') {
-          LibraryUI.renderCatalogView(STATE.books, STATE.currentUser);
+          renderCatalogView(STATE.books, STATE.currentUser);
           document.getElementById('catalog-view').classList.add('active');
         }
       }
@@ -522,7 +504,7 @@ async function handleViewChange(view, isPopState = false) {
       const cachedLoans = isMock ? null : LibraryAPI.getCache('getLoans');
       if (cachedLoans) {
         STATE.loans = cachedLoans.data;
-        LibraryUI.renderBorrowerDashboard(STATE.loans, STATE.currentUser);
+        renderBorrowerDashboard(STATE.loans, STATE.currentUser);
         document.getElementById('borrower-view').classList.add('active');
         hideLoader();
         showStaleBanner();
@@ -539,7 +521,7 @@ async function handleViewChange(view, isPopState = false) {
       if (isNew) {
         STATE.loans = response.data;
         if (STATE.activeView === 'borrower') {
-          LibraryUI.renderBorrowerDashboard(STATE.loans, STATE.currentUser);
+          renderBorrowerDashboard(STATE.loans, STATE.currentUser);
           document.getElementById('borrower-view').classList.add('active');
         }
       }
@@ -553,7 +535,7 @@ async function handleViewChange(view, isPopState = false) {
       if (cachedLoans && cachedCatalog) {
         STATE.loans = cachedLoans.data;
         STATE.books = cachedCatalog.data;
-        LibraryUI.renderLenderDashboard(STATE.loans, STATE.books, STATE.currentUser);
+        renderLenderDashboard(STATE.loans, STATE.books, STATE.currentUser);
         document.getElementById('lender-view').classList.add('active');
         hideLoader();
         showStaleBanner();
@@ -578,7 +560,7 @@ async function handleViewChange(view, isPopState = false) {
         STATE.loans = loansResponse.data;
         STATE.books = catResponse.data;
         if (STATE.activeView === 'lender') {
-          LibraryUI.renderLenderDashboard(STATE.loans, STATE.books, STATE.currentUser);
+          renderLenderDashboard(STATE.loans, STATE.books, STATE.currentUser);
           document.getElementById('lender-view').classList.add('active');
         }
       }
@@ -593,7 +575,7 @@ async function handleViewChange(view, isPopState = false) {
       if (cachedUsers) {
         STATE.users = cachedUsers.data;
         STATE.automation = cachedAutomation ? cachedAutomation.data : null;
-        LibraryUI.renderAdminDashboard(STATE.users, STATE.currentUser, STATE.automation);
+        renderAdminDashboard(STATE.users, STATE.currentUser, STATE.automation);
         document.getElementById('admin-view').classList.add('active');
         hideLoader();
         showStaleBanner();
@@ -621,7 +603,7 @@ async function handleViewChange(view, isPopState = false) {
       STATE.automation = autoResponse.data;
 
       if (STATE.activeView === 'admin') {
-        LibraryUI.renderAdminDashboard(STATE.users, STATE.currentUser, STATE.automation);
+        renderAdminDashboard(STATE.users, STATE.currentUser, STATE.automation);
         document.getElementById('admin-view').classList.add('active');
       }
       hideStaleBanner();
@@ -631,7 +613,7 @@ async function handleViewChange(view, isPopState = false) {
       let book = STATE.books.find(b => b.book_id === bookId);
       
       if (book) {
-        LibraryUI.renderBookDetailsView(book, STATE.loans, STATE.currentUser);
+        renderBookDetailsView(book, STATE.loans, STATE.currentUser);
         document.getElementById('book-details-view').classList.add('active');
         hideLoader();
       } else {
@@ -644,7 +626,7 @@ async function handleViewChange(view, isPopState = false) {
         }
         
         if (book) {
-          LibraryUI.renderBookDetailsView(book, STATE.loans, STATE.currentUser);
+          renderBookDetailsView(book, STATE.loans, STATE.currentUser);
           document.getElementById('book-details-view').classList.add('active');
           hideLoader();
         } else {
@@ -667,15 +649,15 @@ async function handleViewChange(view, isPopState = false) {
       
       const freshBook = STATE.books.find(b => b.book_id === bookId);
       if (freshBook && STATE.activeView === `book-details:${bookId}`) {
-        LibraryUI.renderBookDetailsView(freshBook, STATE.loans, STATE.currentUser);
+        renderBookDetailsView(freshBook, STATE.loans, STATE.currentUser);
         document.getElementById('book-details-view').classList.add('active');
       } else if (!freshBook && STATE.activeView === `book-details:${bookId}`) {
-        LibraryUI.showToast("Book copy not found.", "error");
+        showToast("Book copy not found.", "error");
         handleViewChange('catalog');
       }
     }
   } catch (error) {
-    LibraryUI.showToast("Failed to fetch dashboard data.", "error");
+    showToast("Failed to fetch dashboard data.", "error");
     console.error(error);
   } finally {
     hideLoader();
@@ -684,7 +666,7 @@ async function handleViewChange(view, isPopState = false) {
 }
 
 /**
- * Handles UI Callback Actions
+ * Handles UI Actions
  */
 async function handleUserAction(action, payload) {
   try {
@@ -692,13 +674,12 @@ async function handleUserAction(action, payload) {
       LibraryAPI.clearToken();
       LibraryAPI.clearCache();
       showWelcomeScreen();
-      LibraryUI.showToast("Logged out successfully");
+      showToast("Logged out successfully");
       return;
     }
 
-    // Modal-only actions: handle before showing the global loader
     if (action === 'open_edit_profile') {
-      LibraryUI.showEditProfileModal(payload);
+      showEditProfileModal(payload);
       return;
     }
 
@@ -706,129 +687,125 @@ async function handleUserAction(action, payload) {
 
     if (action === 'register_submit') {
       const response = await LibraryAPI.request('registerUser', payload);
-      LibraryUI.showToast("Profile registered successfully!");
+      showToast("Profile registered successfully!");
       handleSignInSuccess(LibraryAPI.getToken());
     } 
     
     else if (action === 'add_book') {
       const response = await LibraryAPI.request('addBook', payload);
-      LibraryUI.showToast(`Successfully added ${payload.copies || 1} copies!`);
-      LibraryUI.hideModal();
+      showToast(`Successfully added ${payload.copies || 1} copies!`);
+      hideModal();
       await loadGlobalStats();
       handleViewChange('catalog');
     } 
 
     else if (action === 'edit_book') {
       await LibraryAPI.request('editBook', payload);
-      LibraryUI.hideModal();
-      LibraryUI.showToast('Book details updated!');
+      hideModal();
+      showToast('Book details updated!');
       handleViewChange(STATE.activeView);
     }
 
     else if (action === 'toggle_book_availability') {
       const res = await LibraryAPI.request('toggleBookAvailability', payload);
-      LibraryUI.showToast(`Book marked as ${res.data.newStatus}.`);
+      showToast(`Book marked as ${res.data.newStatus}.`);
       handleViewChange(STATE.activeView);
     }
 
     else if (action === 'delete_book') {
       await LibraryAPI.request('deleteBook', payload);
-      LibraryUI.showToast('Book copy removed from library.');
+      showToast('Book copy removed from library.');
       await loadGlobalStats();
       handleViewChange(STATE.activeView);
     }
     
     else if (action === 'borrow_request') {
       const response = await LibraryAPI.request('requestBook', payload);
-      LibraryUI.showToast("Borrow request sent to lender!");
-      LibraryUI.hideModal();
+      showToast("Borrow request sent to lender!");
+      hideModal();
       await loadGlobalStats();
       handleViewChange(STATE.activeView.startsWith('book-details:') ? STATE.activeView : 'borrower');
     } 
     
     else if (action === 'approve_loan') {
       await LibraryAPI.request('approveLoan', { loanId: payload.loanId });
-      LibraryUI.showToast("Lending request approved.");
+      showToast("Lending request approved.");
       handleViewChange(STATE.activeView.startsWith('book-details:') ? STATE.activeView : 'lender');
     } 
     
     else if (action === 'reject_loan') {
       await LibraryAPI.request('rejectLoan', { loanId: payload.loanId });
-      LibraryUI.showToast("Lending request rejected.");
+      showToast("Lending request rejected.");
       handleViewChange(STATE.activeView.startsWith('book-details:') ? STATE.activeView : 'lender');
     } 
     
     else if (action === 'handover_loan') {
       await LibraryAPI.request('handoverBook', { loanId: payload.loanId });
-      LibraryUI.showToast("Book handover confirmed. Loan is active!");
+      showToast("Book handover confirmed. Loan is active!");
       handleViewChange(STATE.activeView.startsWith('book-details:') ? STATE.activeView : 'lender');
     } 
     
     else if (action === 'return_confirm') {
       const response = await LibraryAPI.request('returnBook', { loanId: payload.loanId });
-      LibraryUI.showToast(response.message || "Book checked back in!");
+      showToast(response.message || "Book checked back in!");
       await loadGlobalStats();
       handleViewChange(STATE.activeView.startsWith('book-details:') ? STATE.activeView : 'lender');
     }
 
     else if (action === 'borrower_return_request') {
       const response = await LibraryAPI.request('borrowerReturnBook', { loanId: payload.loanId });
-      LibraryUI.showToast(response.message || "Return requested!");
+      showToast(response.message || "Return requested!");
       await loadGlobalStats();
       handleViewChange(STATE.activeView.startsWith('book-details:') ? STATE.activeView : 'borrower');
     }
 
     else if (action === 'send_return_reminder') {
       const response = await LibraryAPI.request('sendReturnReminder', payload);
-      LibraryUI.showToast(response.message || "Reminder sent.");
+      showToast(response.message || "Reminder sent.");
     } 
     
     else if (action === 'admin_update_status') {
       await LibraryAPI.request('adminUpdateUserStatus', payload);
-      LibraryUI.showToast("User status updated.");
+      showToast("User status updated.");
       handleViewChange('admin');
     }
 
     else if (action === 'admin_edit_user') {
       await LibraryAPI.request('adminEditUser', payload);
-      LibraryUI.hideModal();
-      LibraryUI.showToast(`Profile updated for ${payload.name || payload.targetEmail}.`);
+      hideModal();
+      showToast(`Profile updated for ${payload.name || payload.targetEmail}.`);
       handleViewChange('admin');
     }
 
     else if (action === 'edit_profile') {
       const response = await LibraryAPI.request('updateMyProfile', payload);
-      // Refresh current user in STATE
       STATE.currentUser = response.data;
-      LibraryUI.hideModal();
-      LibraryUI.showToast("Profile updated successfully!");
-      // Re-render navbar with updated name/flat
-      LibraryUI.renderNavbar(STATE.currentUser);
+      hideModal();
+      showToast("Profile updated successfully!");
+      renderNavbar(STATE.currentUser);
     }
 
     else if (action === 'admin_update_automation') {
       const response = await LibraryAPI.request('adminUpdateAutomationSettings', payload);
       STATE.automation = response.data;
-      // Clear cache so next navigation reflects new settings
       if (!CONFIG.MOCK_MODE) LibraryAPI.setCache('adminGetAutomationSettings', response);
-      LibraryUI.showToast('Automation settings saved ✓');
-      // Re-render the admin panel in-place with updated settings
-      LibraryUI.renderAdminDashboard(STATE.users, STATE.currentUser, STATE.automation);
+      showToast('Automation settings saved ✓');
+      renderAdminDashboard(STATE.users, STATE.currentUser, STATE.automation);
     }
 
     else if (action === 'admin_trigger_notification') {
       const response = await LibraryAPI.request('adminTriggerNotification', payload);
-      LibraryUI.showToast(response.message || 'Trigger executed successfully!');
+      showToast(response.message || 'Trigger executed successfully!');
     }
   } catch (error) {
-    LibraryUI.showToast(error.message || "Action failed.", "error");
+    showToast(error.message || "Action failed.", "error");
   } finally {
     hideLoader();
   }
 }
 
 /**
- * Loads and renders the global library stats counters
+ * Loads and renders global library stats counters
  */
 async function loadGlobalStats() {
   const isMock = CONFIG.MOCK_MODE;
@@ -836,10 +813,10 @@ async function loadGlobalStats() {
   
   if (cachedStats) {
     STATE.stats = cachedStats.data;
-    LibraryUI.renderStats(STATE.stats);
+    renderStats(STATE.stats);
     hideInitProgress();
   } else {
-    LibraryUI.renderStatsSkeleton();
+    renderStatsSkeleton();
   }
 
   try {
@@ -850,19 +827,19 @@ async function loadGlobalStats() {
     const isNew = !cachedStats || JSON.stringify(cachedStats.data) !== JSON.stringify(response.data);
     if (isNew) {
       STATE.stats = response.data;
-      LibraryUI.renderStats(STATE.stats);
+      renderStats(STATE.stats);
     }
   } catch (error) {
     console.error("Error loading stats:", error);
     if (!cachedStats) {
-      LibraryUI.renderStats({});
+      renderStats({});
     }
   } finally {
     hideInitProgress();
   }
 }
 
-// Helpers
+// Global Activity Loader and Banners
 function showLoader() {
   document.getElementById('loader').style.display = 'block';
 }
@@ -890,18 +867,13 @@ function hideStaleBanner() {
   }, 320);
 }
 
-function showInitProgress() {
-  const bar = document.getElementById('init-progress');
-  if (bar) bar.style.display = 'block';
-}
-
 function hideInitProgress() {
   const bar = document.getElementById('init-progress');
   if (bar) bar.style.display = 'none';
 }
 
 /**
- * Initializes and manages the light/dark theme toggle
+ * Initializes and manages light/dark theme toggle
  */
 function initTheme() {
   const themeToggleBtn = document.getElementById('theme-toggle-btn');
@@ -911,10 +883,10 @@ function initTheme() {
   
   if (currentTheme === 'dark') {
     document.body.classList.add('dark-theme');
-    themeToggleBtn.innerHTML = LibraryUI.getIcon('sun');
+    themeToggleBtn.innerHTML = ICONS.sun;
   } else {
     document.body.classList.remove('dark-theme');
-    themeToggleBtn.innerHTML = LibraryUI.getIcon('moon');
+    themeToggleBtn.innerHTML = ICONS.moon;
   }
 
   themeToggleBtn.addEventListener('click', () => {
@@ -922,7 +894,7 @@ function initTheme() {
     const newTheme = isDark ? 'dark' : 'light';
     localStorage.setItem('lib_theme', newTheme);
     
-    themeToggleBtn.innerHTML = LibraryUI.getIcon(isDark ? 'sun' : 'moon');
-    LibraryUI.showToast(`Theme switched to ${newTheme} mode`);
+    themeToggleBtn.innerHTML = isDark ? ICONS.sun : ICONS.moon;
+    showToast(`Theme switched to ${newTheme} mode`);
   });
 }
