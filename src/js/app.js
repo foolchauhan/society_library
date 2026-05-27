@@ -69,6 +69,12 @@ async function initApp() {
 
   // Handle popstate for browser back/forward buttons/gestures
   window.addEventListener('popstate', (event) => {
+    // If a modal is currently open, close it and prevent page view navigation
+    if (LibraryUI.isModalActive()) {
+      LibraryUI.hideModal(true); // true indicates it's popped by history back, so we do not call history.back() again!
+      return;
+    }
+
     if (event.state && event.state.view) {
       handleViewChange(event.state.view, true);
     } else {

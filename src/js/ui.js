@@ -427,10 +427,26 @@ class UiService {
     document.getElementById('modal-title').innerText = title;
     document.getElementById('modal-body').innerHTML = bodyHtml;
     this.modalOverlay.classList.add('active');
+    document.body.style.overflow = 'hidden';
+
+    // Push a dummy state to history so back gesture will close it
+    if (window.history.pushState) {
+      window.history.pushState({ isModalOpen: true }, '', window.location.href);
+    }
   }
 
-  hideModal() {
+  hideModal(isPopState = false) {
     this.modalOverlay.classList.remove('active');
+    document.body.style.overflow = '';
+
+    // If this was a manual close, pop the modal state from history
+    if (!isPopState && window.history.state && window.history.state.isModalOpen) {
+      window.history.back();
+    }
+  }
+
+  isModalActive() {
+    return this.modalOverlay && this.modalOverlay.classList.contains('active');
   }
 
   renderNavbar(user) {
