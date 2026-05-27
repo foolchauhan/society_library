@@ -1137,7 +1137,9 @@ class UiService {
           'This will permanently remove this book copy from the library. Active loans are not affected.',
           () => {
             if (this.onActionCallback) this.onActionCallback('delete_book', { bookId });
-          }
+          },
+          'Confirm Remove',
+          'btn-danger'
         );
       });
     });
@@ -1152,7 +1154,9 @@ class UiService {
         this.showConfirmDialog(
           `Edit book owned by ${ownerName}?`,
           `You are about to edit "${book.title}" on behalf of ${ownerName}. As Owner you have full override access. Proceed?`,
-          () => this.showOwnerEditBookModal(book)
+          () => this.showOwnerEditBookModal(book),
+          'Confirm Edit',
+          'btn-primary'
         );
       });
     });
@@ -1169,7 +1173,9 @@ class UiService {
           `You are about to mark "${book.title}" as ${newState} on behalf of ${ownerName}. Proceed?`,
           () => {
             if (this.onActionCallback) this.onActionCallback('toggle_book_availability', { bookId });
-          }
+          },
+          'Confirm Change',
+          'btn-primary'
         );
       });
     });
@@ -1185,7 +1191,9 @@ class UiService {
           `⚠️ You are about to permanently remove "${book.title}" (Copy #${book.copy_number}) from ${ownerName}\'s library. This cannot be undone. Are you absolutely sure?`,
           () => {
             if (this.onActionCallback) this.onActionCallback('delete_book', { bookId });
-          }
+          },
+          'Confirm Remove',
+          'btn-danger'
         );
       });
     });
@@ -1374,7 +1382,9 @@ class UiService {
           "This will notify the lender that you have returned the book. They will need to confirm receipt.",
           () => {
             if (this.onActionCallback) this.onActionCallback('borrower_return_request', { loanId });
-          }
+          },
+          'Confirm Return',
+          'btn-primary'
         );
       });
     });
@@ -1389,7 +1399,9 @@ class UiService {
           "Confirm that you have physically collected the book from the lender. This will mark the loan as active.",
           () => {
             if (this.onActionCallback) this.onActionCallback('handover_loan', { loanId });
-          }
+          },
+          'Confirm Receipt',
+          'btn-primary'
         );
       });
     });
@@ -1724,7 +1736,9 @@ class UiService {
             this.showConfirmDialog(
               `Edit book owned by ${book.owner_name || book.owner_email}?`,
               `You are about to edit "${book.title}" on behalf of another user. As Owner/Admin, you have full override access. Proceed?`,
-              () => this.showOwnerEditBookModal(book, currentUser)
+              () => this.showOwnerEditBookModal(book, currentUser),
+              'Confirm Edit',
+              'btn-primary'
             );
           } else {
             this.showOwnerEditBookModal(book, currentUser);
@@ -1762,7 +1776,9 @@ class UiService {
           'This will permanently remove this book copy from the library. Active loans are not affected.',
           () => {
             if (this.onActionCallback) this.onActionCallback('delete_book', { bookId });
-          }
+          },
+          'Confirm Remove',
+          'btn-danger'
         );
       });
     });
@@ -2027,7 +2043,9 @@ class UiService {
             if (this.onActionCallback) {
               this.onActionCallback('admin_update_status', { targetEmail, status: nextStatus, role: targetUser ? targetUser.role : null });
             }
-          }
+          },
+          nextStatus === 'Approved' ? 'Confirm Approval' : 'Confirm Block',
+          nextStatus === 'Approved' ? 'btn-primary' : 'btn-danger'
         );
       });
     });
@@ -2054,7 +2072,9 @@ class UiService {
             if (this.onActionCallback) this.onActionCallback('admin_update_status', {
               targetEmail, status: (targetUser ? targetUser.status : 'Approved'), role: 'Admin'
             });
-          }
+          },
+          'Confirm Promotion',
+          'btn-primary'
         );
       });
     });
@@ -2072,7 +2092,9 @@ class UiService {
             if (this.onActionCallback) this.onActionCallback('admin_update_status', {
               targetEmail, status: (targetUser ? targetUser.status : 'Approved'), role: 'Both'
             });
-          }
+          },
+          'Confirm Demotion',
+          'btn-warning'
         );
       });
     });
@@ -2254,7 +2276,9 @@ class UiService {
         this.showConfirmDialog(
           'Confirm Profile Modification',
           `You are editing the profile details for "${user.name}" (${user.email}). Are you sure you want to save these changes on their behalf?`,
-          doSubmit
+          doSubmit,
+          'Confirm Modification',
+          'btn-primary'
         );
       } else {
         doSubmit();
@@ -2972,13 +2996,13 @@ class UiService {
   /**
    * Lightweight confirm dialog (reuses the modal)
    */
-  showConfirmDialog(title, message, onConfirm) {
+  showConfirmDialog(title, message, onConfirm, okLabel = 'Confirm', btnClass = 'btn-primary') {
     const bodyHtml = `
       <div>
         <p style="color: var(--text-secondary); font-size: 0.95rem; line-height: 1.6; margin-bottom: 1.5rem;">${message}</p>
         <div style="display: flex; justify-content: flex-end; gap: 0.75rem;">
           <button class="btn btn-secondary" id="confirm-cancel">Cancel</button>
-          <button class="btn btn-danger" id="confirm-ok">${ICONS.x} Confirm Remove</button>
+          <button class="btn ${btnClass}" id="confirm-ok">${okLabel}</button>
         </div>
       </div>
     `;
@@ -3345,7 +3369,9 @@ class UiService {
         this.showConfirmDialog(
           'Confirm Override Changes',
           `You are editing "${book.title}" on behalf of another user (${book.owner_name || book.owner_email}). Are you sure you want to proceed?`,
-          doSubmit
+          doSubmit,
+          'Confirm Override',
+          'btn-primary'
         );
       } else {
         doSubmit();
@@ -3976,7 +4002,9 @@ Thank you for contributing to our shared community library!`;
           'This will permanently remove this book copy from the library. Active loans are not affected.',
           () => {
             if (this.onActionCallback) this.onActionCallback('delete_book', { bookId: book.book_id });
-          }
+          },
+          'Confirm Remove',
+          'btn-danger'
         );
       });
     }
@@ -4032,7 +4060,9 @@ Thank you for contributing to our shared community library!`;
           "This will notify the lender that you have returned the book. They will need to confirm receipt.",
           () => {
             if (this.onActionCallback) this.onActionCallback('borrower_return_request', { loanId: activeLoan.loan_id });
-          }
+          },
+          'Confirm Return',
+          'btn-primary'
         );
       });
     }
